@@ -2,10 +2,22 @@ const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const User = require('../models/User');
 
+// Get the base URL for OAuth callback
+const getCallbackURL = () => {
+  if (process.env.NODE_ENV === 'production') {
+    return process.env.BACKEND_URL 
+      ? `${process.env.BACKEND_URL}/api/auth/google/callback`
+      : 'https://nexastyle1.onrender.com/api/auth/google/callback';
+  }
+  return process.env.BACKEND_URL 
+    ? `${process.env.BACKEND_URL}/api/auth/google/callback`
+    : 'http://localhost:5000/api/auth/google/callback';
+};
+
 passport.use(new GoogleStrategy({
   clientID: process.env.GOOGLE_CLIENT_ID,
   clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  callbackURL: "/api/auth/google/callback"
+  callbackURL: getCallbackURL()
 },
 async (accessToken, refreshToken, profile, done) => {
   try {

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
+import { getBackendUrl } from '../utils/config';
 import './Auth.css';
 
 const Login = () => {
@@ -49,9 +50,7 @@ const Login = () => {
   };
 
   const handleGoogleLogin = () => {
-    const backendUrl = process.env.NODE_ENV === "production"
-      ? "https://nexastyle1.onrender.com"
-      : "http://localhost:5000";
+    const backendUrl = getBackendUrl();
     window.location.href = `${backendUrl}/api/auth/google`;
   };
 
