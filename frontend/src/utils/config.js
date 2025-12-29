@@ -1,6 +1,12 @@
 // Backend URL configuration
 export const getBackendUrl = () => {
-  return process.env.NODE_ENV === "production"
+  // Check if we're in production by checking the current hostname
+  const isProduction = 
+    process.env.NODE_ENV === "production" || 
+    window.location.hostname === "nexastyle.onrender.com" ||
+    window.location.hostname.includes("render.com");
+  
+  return isProduction
     ? "https://nexastyle1.onrender.com"
     : "http://localhost:5000";
 };
@@ -9,10 +15,16 @@ export const getBackendUrl = () => {
 export const getImageUrl = (imagePath) => {
   if (!imagePath) return "";
   
+  // Check if we're in production
+  const isProduction = 
+    process.env.NODE_ENV === "production" || 
+    window.location.hostname === "nexastyle.onrender.com" ||
+    window.location.hostname.includes("render.com");
+  
   // If it's already a full URL
   if (imagePath.startsWith("http")) {
     // In production, replace localhost URLs with production backend URL
-    if (process.env.NODE_ENV === "production" && imagePath.includes("localhost")) {
+    if (isProduction && imagePath.includes("localhost")) {
       try {
         // Extract the path from the URL (e.g., "/uploads/image.jpg")
         const url = new URL(imagePath);
