@@ -1,0 +1,386 @@
+.checkout-page {
+  min-height: 100vh;
+  padding: 1.5rem 0;
+  background: #f8f9fa;
+}
+
+.checkout-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.checkout-container h1 {
+  margin-bottom: 1.25rem;
+  color: #1a1a1a;
+  font-size: 1.75rem;
+  font-weight: 600;
+}
+
+.checkout-content {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.5rem;
+}
+
+.checkout-form {
+  background: white;
+  padding: 1.25rem;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #f0f0f0;
+}
+
+.form-section {
+  margin-bottom: 1.25rem;
+}
+
+.form-section h2 {
+  margin-bottom: 1rem;
+  color: #1a1a1a;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-weight: 500;
+  color: #333;
+  font-size: 0.9rem;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  padding: 0.65rem;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  transition: border-color 0.3s;
+  background: white;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #FF8C00;
+  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+}
+
+.form-group select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2.5rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.payment-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.payment-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.payment-option:hover {
+  border-color: #FF8C00;
+  background: #fff8f0;
+}
+
+.payment-option input[type="radio"] {
+  width: auto;
+  margin: 0;
+}
+
+.return-policy-notice {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.return-policy-notice p {
+  margin: 0;
+  color: #856404;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.return-policy-notice a {
+  color: #007bff;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.return-policy-notice a:hover {
+  color: #0056b3;
+}
+
+.place-order-btn {
+  width: 100%;
+  padding: 0.875rem;
+  background: linear-gradient(135deg, #FF8C00, #FFA500);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  transition: all 0.3s;
+  margin-top: 0.75rem;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(255, 140, 0, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.place-order-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #FF7F00, #FF8C00);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.4);
+}
+
+.place-order-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.order-summary {
+  background: white;
+  padding: 1.25rem;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #f0f0f0;
+  height: fit-content;
+  position: sticky;
+  top: 100px;
+}
+
+.order-summary h2 {
+  margin-bottom: 1rem;
+  color: #1a1a1a;
+  font-size: 1.25rem;
+  font-weight: 600;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.summary-items {
+  margin-bottom: 1rem;
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.summary-item h4 {
+  margin-bottom: 0.2rem;
+  color: #1a1a1a;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.summary-item p {
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.summary-total {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  padding-top: 0.75rem;
+  margin-top: 0.5rem;
+  border-top: 2px solid #e0e0e0;
+}
+
+.loading {
+  text-align: center;
+  padding: 4rem;
+  font-size: 1.2rem;
+}
+
+@media (max-width: 768px) {
+  .checkout-page {
+    padding: 1rem 0;
+  }
+
+  .checkout-container {
+    padding: 0 1rem;
+  }
+
+  .checkout-container h1 {
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .checkout-content {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .checkout-form {
+    padding: 1rem;
+  }
+
+  .form-section {
+    margin-bottom: 1rem;
+  }
+
+  .form-section h2 {
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .form-group {
+    margin-bottom: 0.75rem;
+  }
+
+  .form-group label {
+    font-size: 0.85rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .form-group input,
+  .form-group textarea,
+  .form-group select {
+    padding: 0.6rem;
+    font-size: 0.9rem;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+  }
+
+  .payment-option {
+    padding: 0.6rem;
+  }
+
+  .order-summary {
+    position: static;
+    padding: 1rem;
+  }
+
+  .order-summary h2 {
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .summary-item {
+    padding-bottom: 0.6rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .summary-total {
+    font-size: 1rem;
+    padding-top: 0.6rem;
+    margin-top: 0.4rem;
+  }
+
+  .return-policy-notice {
+    padding: 0.6rem;
+    margin-bottom: 0.6rem;
+    margin-top: 0.6rem;
+  }
+
+  .return-policy-notice p {
+    font-size: 0.8rem;
+  }
+
+  .place-order-btn {
+    padding: 0.75rem;
+    font-size: 0.95rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .checkout-page {
+    padding: 0.75rem 0;
+  }
+
+  .checkout-container {
+    padding: 0 0.75rem;
+  }
+
+  .checkout-container h1 {
+    font-size: 1.3rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+
+  .checkout-form {
+    padding: 0.75rem;
+  }
+
+  .form-section {
+    margin-bottom: 0.75rem;
+  }
+
+  .form-section h2 {
+    font-size: 1rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .form-group {
+    margin-bottom: 0.6rem;
+  }
+
+  .form-group input,
+  .form-group textarea,
+  .form-group select {
+    padding: 0.55rem;
+    font-size: 0.85rem;
+  }
+
+  .order-summary {
+    padding: 0.75rem;
+  }
+
+  .order-summary h2 {
+    font-size: 1rem;
+  }
+
+  .place-order-btn {
+    padding: 0.65rem;
+    font-size: 0.9rem;
+  }
+}
+
+
