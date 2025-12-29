@@ -4,14 +4,18 @@ const User = require('../models/User');
 
 // Get the base URL for OAuth callback
 const getCallbackURL = () => {
-  if (process.env.NODE_ENV === 'production') {
-    return process.env.BACKEND_URL 
-      ? `${process.env.BACKEND_URL}/api/auth/google/callback`
-      : 'https://nexastyle1.onrender.com/api/auth/google/callback';
+  // Check if BACKEND_URL is set, otherwise use defaults
+  if (process.env.BACKEND_URL) {
+    return `${process.env.BACKEND_URL}/api/auth/google/callback`;
   }
-  return process.env.BACKEND_URL 
-    ? `${process.env.BACKEND_URL}/api/auth/google/callback`
-    : 'http://localhost:5000/api/auth/google/callback';
+  
+  // Use production URL if NODE_ENV is production
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://nexastyle1.onrender.com/api/auth/google/callback';
+  }
+  
+  // Default to localhost for development
+  return 'http://localhost:5000/api/auth/google/callback';
 };
 
 passport.use(new GoogleStrategy({

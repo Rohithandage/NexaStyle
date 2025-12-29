@@ -5,6 +5,62 @@ const Product = require('../models/Product');
 const Order = require('../models/Order');
 const Settings = require('../models/Settings');
 const { auth, admin } = require('../middleware/auth');
+const cloudinary = require('cloudinary').v2;
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'df5r3j9cc',
+  api_key: process.env.CLOUDINARY_API_KEY || '481492652749781',
+  api_secret: process.env.CLOUDINARY_API_SECRET || '1V3u4ARwQDCIFmqS0Rc_wNjsoOE'
+});
+
+// Helper function to extract public_id from Cloudinary URL
+const extractPublicId = (url) => {
+  if (!url || typeof url !== 'string') return null;
+  
+  // If it's already a public_id (doesn't contain http)
+  if (!url.startsWith('http')) {
+    return url.includes('/') ? url : `nexastyle/${url}`;
+  }
+  
+  // If it's a Cloudinary URL, extract public_id
+  if (url.includes('cloudinary.com')) {
+    try {
+      // Cloudinary URL format: https://res.cloudinary.com/{cloud_name}/image/upload/{version}/{public_id}.{format}
+      const urlParts = url.split('/');
+      const uploadIndex = urlParts.findIndex(part => part === 'upload');
+      
+      if (uploadIndex !== -1 && urlParts[uploadIndex + 2]) {
+        // Get the part after version (v1234567890)
+        const versionAndId = urlParts[uploadIndex + 2];
+        // Remove file extension and version if present
+        let publicId = versionAndId.split('.')[0];
+        // Remove version prefix (v1234567890) if present
+        if (publicId.startsWith('v') && /^v\d+/.test(publicId)) {
+          publicId = publicId.replace(/^v\d+/, '');
+        }
+        return publicId;
+      }
+    } catch (error) {
+      console.error('Error extracting public_id from URL:', url, error);
+      return null;
+    }
+  }
+  
+  return null;
+};
+
+// Helper function to delete image from Cloudinary
+const deleteFromCloudinary = async (publicId) => {
+  try {
+    if (!publicId) return false;
+    const result = await cloudinary.uploader.destroy(publicId);
+    return result.result === 'ok' || result.result === 'not found';
+  } catch (error) {
+    console.error('Error deleting from Cloudinary:', publicId, error);
+    return false;
+  }
+};
 
 // Middleware to check admin
 router.use(auth);
@@ -148,12 +204,47 @@ router.put('/products/:id', async (req, res) => {
 // Delete product
 router.delete('/products/:id', async (req, res) => {
   try {
-    const product = await Product.findByIdAndDelete(req.params.id);
+    // First, get the product to extract image URLs
+    const product = await Product.findById(req.params.id);
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
-    res.json({ message: 'Product deleted' });
+    
+    // Collect all image URLs from the product
+    const imageUrls = [];
+    
+    // Add main product images
+    if (product.images && Array.isArray(product.images)) {
+      imageUrls.push(...product.images);
+    }
+    
+    // Add color-specific images
+    if (product.colors && Array.isArray(product.colors)) {
+      product.colors.forEach(colorItem => {
+        if (typeof colorItem === 'object' && colorItem.images && Array.isArray(colorItem.images)) {
+          imageUrls.push(...colorItem.images);
+        }
+      });
+    }
+    
+    // Delete all images from Cloudinary
+    const deletePromises = imageUrls.map(url => {
+      const publicId = extractPublicId(url);
+      if (publicId) {
+        return deleteFromCloudinary(publicId);
+      }
+      return Promise.resolve(false);
+    });
+    
+    // Wait for all deletions to complete (don't fail if some fail)
+    await Promise.allSettled(deletePromises);
+    
+    // Now delete the product from database
+    await Product.findByIdAndDelete(req.params.id);
+    
+    res.json({ message: 'Product and associated images deleted successfully' });
   } catch (error) {
+    console.error('Error deleting product:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
