@@ -24,8 +24,34 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       localStorage.removeItem('token');
       delete api.defaults.headers.common['Authorization'];
+      setUser(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Expose fetchUser so it can be called externally (e.g., after Google OAuth)
+  const refreshUser = async () => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      setLoading(true);
+      try {
+        const res = await api.get('/api/auth/me');
+        setUser(res.data.user);
+        return { success: true, user: res.data.user };
+      } catch (error) {
+        localStorage.removeItem('token');
+        delete api.defaults.headers.common['Authorization'];
+        setUser(null);
+        setLoading(false);
+        throw error;
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      setLoading(false);
+      throw new Error('No token found');
     }
   };
 
@@ -75,6 +101,7 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
+    refreshUser,
     isAuthenticated: !!user,
     isAdmin: user?.role === 'admin'
   };

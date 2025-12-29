@@ -3,12 +3,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
 import { getBackendUrl } from '../utils/config';
+import api from '../api/api';
 import './Auth.css';
 
 const Login = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, refreshUser } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -17,11 +18,37 @@ const Login = () => {
 
   useEffect(() => {
     const token = searchParams.get('token');
-    if (token) {
-      localStorage.setItem('token', token);
-      window.location.href = '/';
+    const error = searchParams.get('error');
+    
+    if (error) {
+      toast.error('Google authentication failed. Please try again.');
+      navigate('/login');
+      return;
     }
-  }, [searchParams]);
+    
+    if (token) {
+      // Store the token
+      localStorage.setItem('token', token);
+      
+      // Set the token in API headers
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      
+      // Refresh user data in AuthContext
+      refreshUser()
+        .then(() => {
+          toast.success('Login successful!');
+          // Navigate to home page
+          navigate('/', { replace: true });
+        })
+        .catch(err => {
+          console.error('Error refreshing user:', err);
+          localStorage.removeItem('token');
+          delete api.defaults.headers.common['Authorization'];
+          toast.error('Failed to authenticate. Please try again.');
+          navigate('/login');
+        });
+    }
+  }, [searchParams, navigate, refreshUser]);
 
   useEffect(() => {
     if (isAuthenticated) {
