@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
 import HeaderCarousel from '../components/HeaderCarousel';
+import { getImageUrl } from '../utils/config';
 import './Home.css';
 
 // Color name to hex mapping
@@ -74,7 +75,7 @@ const Home = () => {
 
   const fetchHeaderImages = async () => {
     try {
-      const res = await axios.get('/api/settings/header-images');
+      const res = await api.get('/api/settings/header-images');
       setHeaderImages(res.data.headerImages || []);
     } catch (error) {
       console.error('Error fetching header images:', error);
@@ -83,7 +84,7 @@ const Home = () => {
 
   const trackVisitor = async () => {
     try {
-      await axios.post('/api/analytics/track-visitor', { page: 'home' });
+      await api.post('/api/analytics/track-visitor', { page: 'home' });
     } catch (error) {
       console.error('Error tracking visitor:', error);
     }
@@ -91,7 +92,7 @@ const Home = () => {
 
   const fetchTrendingProducts = async () => {
     try {
-      const res = await axios.get('/api/products?trending=true&limit=8');
+      const res = await api.get('/api/products?trending=true&limit=8');
       setTrendingProducts(res.data.products || []);
     } catch (error) {
       console.error('Error fetching trending products:', error);
@@ -100,7 +101,7 @@ const Home = () => {
 
   const fetchFeaturedProducts = async () => {
     try {
-      const res = await axios.get('/api/products?limit=8');
+      const res = await api.get('/api/products?limit=8');
       setFeaturedProducts(res.data.products || []);
     } catch (error) {
       console.error('Error fetching products:', error);
@@ -109,7 +110,7 @@ const Home = () => {
 
   const checkCartItems = async () => {
     try {
-      const res = await axios.get('/api/cart', {
+      const res = await api.get('/api/cart', {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -171,7 +172,7 @@ const Home = () => {
     }
 
     try {
-      await axios.post(
+      await api.post(
         '/api/cart/add',
         payload,
         {
@@ -224,7 +225,7 @@ const Home = () => {
                     <div className="product-image">
                       {product.images && product.images[0] ? (
                         <img 
-                          src={product.images[0].startsWith('http') ? product.images[0] : `http://localhost:5000${product.images[0]}`} 
+                          src={getImageUrl(product.images[0])} 
                           alt={product.name}
                           onError={(e) => {
                             e.target.onerror = null;
@@ -314,7 +315,7 @@ const Home = () => {
                   <div className="product-image">
                     {product.images && product.images[0] ? (
                       <img 
-                        src={product.images[0].startsWith('http') ? product.images[0] : `http://localhost:5000${product.images[0]}`} 
+                        src={getImageUrl(product.images[0])} 
                         alt={product.name}
                         onError={(e) => {
                           e.target.onerror = null;

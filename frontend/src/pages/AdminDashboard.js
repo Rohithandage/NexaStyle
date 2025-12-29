@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import api from '../api/api';
 import { toast } from 'react-toastify';
+import { getImageUrl, getBackendUrl } from '../utils/config';
 import './AdminDashboard.css';
 
 const AdminDashboard = () => {
@@ -63,7 +64,7 @@ const AdminDashboard = () => {
 
   const fetchHeaderImages = async () => {
     try {
-      const res = await axios.get('/api/admin/settings/header-images', {
+      const res = await api.get('/api/admin/settings/header-images', {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -76,9 +77,9 @@ const AdminDashboard = () => {
 
   const handleAddHeaderImage = async (imageUrl) => {
     try {
-      await axios.post(
+      await api.post(
         '/api/admin/settings/header-images',
-        { imageUrl: `http://localhost:5000${imageUrl}` },
+        { imageUrl: getImageUrl(imageUrl) },
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem('token')}`
@@ -94,7 +95,7 @@ const AdminDashboard = () => {
 
   const handleRemoveHeaderImage = async (imageUrl) => {
     try {
-      await axios.delete(
+      await api.delete(
         '/api/admin/settings/header-images',
         {
           data: { imageUrl },
@@ -112,7 +113,7 @@ const AdminDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const res = await axios.get('/api/analytics/dashboard', {
+      const res = await api.get('/api/analytics/dashboard', {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -125,7 +126,7 @@ const AdminDashboard = () => {
 
   const fetchCategories = async () => {
     try {
-      const res = await axios.get('/api/admin/categories', {
+      const res = await api.get('/api/admin/categories', {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -252,7 +253,7 @@ const AdminDashboard = () => {
 
   const fetchOrders = async () => {
     try {
-      const res = await axios.get('/api/admin/orders', {
+      const res = await api.get('/api/admin/orders', {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -265,7 +266,7 @@ const AdminDashboard = () => {
 
   const fetchPendingReviews = async () => {
     try {
-      const res = await axios.get('/api/reviews/admin/pending', {
+      const res = await api.get('/api/reviews/admin/pending', {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -283,7 +284,7 @@ const AdminDashboard = () => {
         ? newSubcategory.colors.split(',').map(c => c.trim()).filter(c => c !== '')
         : [];
       
-      await axios.post(
+      await api.post(
         `/api/admin/categories/${newSubcategory.categoryId}/subcategories`,
         { 
           name: newSubcategory.name,
@@ -305,7 +306,7 @@ const AdminDashboard = () => {
 
   const handleUpdateSubcategory = async (categoryId, subcategoryId, updates) => {
     try {
-      await axios.put(
+      await api.put(
         `/api/admin/categories/${categoryId}/subcategories/${subcategoryId}`,
         updates,
         {
@@ -324,7 +325,7 @@ const AdminDashboard = () => {
   const handleDeleteSubcategory = async (categoryId, subcategoryId) => {
     if (!window.confirm('Are you sure you want to delete this subcategory?')) return;
     try {
-      await axios.delete(
+      await api.delete(
         `/api/admin/categories/${categoryId}/subcategories/${subcategoryId}`,
         {
           headers: {
@@ -341,7 +342,7 @@ const AdminDashboard = () => {
 
   const handleUpdateOrderStatus = async (orderId, status) => {
     try {
-      await axios.put(
+      await api.put(
         `/api/admin/orders/${orderId}/status`,
         { orderStatus: status },
         {
@@ -359,7 +360,7 @@ const AdminDashboard = () => {
 
   const handleApproveReview = async (reviewId) => {
     try {
-      await axios.put(
+      await api.put(
         `/api/reviews/approve/${reviewId}`,
         {},
         {
@@ -377,7 +378,7 @@ const AdminDashboard = () => {
 
   const fetchImages = async () => {
     try {
-      const res = await axios.get('/api/upload/all', {
+      const res = await api.get('/api/upload/all', {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -397,7 +398,7 @@ const AdminDashboard = () => {
       const formData = new FormData();
       if (files.length === 1) {
         formData.append('image', files[0]);
-        const res = await axios.post('/api/upload/single', formData, {
+        const res = await api.post('/api/upload/single', formData, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem('token')}`,
             'Content-Type': 'multipart/form-data'
@@ -408,7 +409,7 @@ const AdminDashboard = () => {
         files.forEach(file => {
           formData.append('images', file);
         });
-        const res = await axios.post('/api/upload/multiple', formData, {
+        const res = await api.post('/api/upload/multiple', formData, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem('token')}`,
             'Content-Type': 'multipart/form-data'
@@ -427,7 +428,7 @@ const AdminDashboard = () => {
   const handleDeleteImage = async (filename) => {
     if (!window.confirm('Are you sure you want to delete this image?')) return;
     try {
-      await axios.delete(`/api/upload/${filename}`, {
+      await api.delete(`/api/upload/${filename}`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -440,14 +441,14 @@ const AdminDashboard = () => {
   };
 
   const copyImageUrl = (url) => {
-    const fullUrl = `http://localhost:5000${url}`;
+    const fullUrl = `${getBackendUrl()}${url}`;
     navigator.clipboard.writeText(fullUrl);
     toast.success('Image URL copied to clipboard!');
   };
 
   const fetchProducts = async () => {
     try {
-      const res = await axios.get('/api/admin/products', {
+      const res = await api.get('/api/admin/products', {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -489,7 +490,7 @@ const AdminDashboard = () => {
   };
 
   const handleAddImageToProduct = (imageUrl) => {
-    const fullUrl = `http://localhost:5000${imageUrl}`;
+    const fullUrl = `${getBackendUrl()}${imageUrl}`;
     if (!productForm.images.includes(fullUrl)) {
       setProductForm({
         ...productForm,
@@ -517,13 +518,13 @@ const AdminDashboard = () => {
       const formData = new FormData();
       if (files.length === 1) {
         formData.append('image', files[0]);
-        const res = await axios.post('/api/upload/single', formData, {
+        const res = await api.post('/api/upload/single', formData, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem('token')}`,
             'Content-Type': 'multipart/form-data'
           }
         });
-        const fullUrl = `http://localhost:5000${res.data.imageUrl}`;
+        const fullUrl = `${getBackendUrl()}${res.data.imageUrl}`;
         if (!productForm.images.includes(fullUrl)) {
           setProductForm({
             ...productForm,
@@ -535,13 +536,13 @@ const AdminDashboard = () => {
         files.forEach(file => {
           formData.append('images', file);
         });
-        const res = await axios.post('/api/upload/multiple', formData, {
+        const res = await api.post('/api/upload/multiple', formData, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem('token')}`,
             'Content-Type': 'multipart/form-data'
           }
         });
-        const newImages = res.data.images.map(img => `http://localhost:5000${img.url}`);
+        const newImages = res.data.images.map(img => getImageUrl(img.url));
         const uniqueNewImages = newImages.filter(img => !productForm.images.includes(img));
         setProductForm({
           ...productForm,
@@ -593,7 +594,7 @@ const AdminDashboard = () => {
       };
 
       if (editingProduct) {
-        await axios.put(
+        await api.put(
           `/api/admin/products/${editingProduct._id}`,
           productData,
           {
@@ -604,7 +605,7 @@ const AdminDashboard = () => {
         );
         toast.success('Product updated successfully');
       } else {
-        await axios.post(
+        await api.post(
           '/api/admin/products',
           productData,
           {
@@ -664,10 +665,10 @@ const AdminDashboard = () => {
     } else if (colors.length > 0 && colors[0].images) {
       // New format with color-specific images - filter out color images from general images
       const colorImageUrls = colors.flatMap(c => c.images || []).map(img => 
-        img.startsWith('http') ? img : `http://localhost:5000${img}`
+        img.startsWith('http') ? img : getImageUrl(img)
       );
       generalImages = generalImages.filter(img => {
-        const imgUrl = img.startsWith('http') ? img : `http://localhost:5000${img}`;
+        const imgUrl = getImageUrl(img);
         return !colorImageUrls.includes(imgUrl);
       });
     }
@@ -691,7 +692,7 @@ const AdminDashboard = () => {
   const handleDeleteProduct = async (productId) => {
     if (!window.confirm('Are you sure you want to delete this product?')) return;
     try {
-      await axios.delete(`/api/admin/products/${productId}`, {
+      await api.delete(`/api/admin/products/${productId}`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -705,7 +706,7 @@ const AdminDashboard = () => {
 
   const handleToggleTrending = async (productId, isTrending) => {
     try {
-      await axios.put(
+      await api.put(
         `/api/admin/products/${productId}`,
         { isTrending },
         {
@@ -1491,13 +1492,13 @@ const AdminDashboard = () => {
                                                   const formData = new FormData();
                                                   if (files.length === 1) {
                                                     formData.append('image', files[0]);
-                                                    const res = await axios.post('/api/upload/single', formData, {
+                                                    const res = await api.post('/api/upload/single', formData, {
                                                       headers: {
                                                         Authorization: `Bearer ${localStorage.getItem('token')}`,
                                                         'Content-Type': 'multipart/form-data'
                                                       }
                                                     });
-                                                    const imageUrl = `http://localhost:5000${res.data.imageUrl}`;
+                                                    const imageUrl = getImageUrl(res.data.imageUrl);
                                                     
                                                     // Find the color in the colors array and add image
                                                     const updatedColors = productForm.colors.map(c => {
@@ -1521,13 +1522,13 @@ const AdminDashboard = () => {
                                                     files.forEach(file => {
                                                       formData.append('images', file);
                                                     });
-                                                    const res = await axios.post('/api/upload/multiple', formData, {
+                                                    const res = await api.post('/api/upload/multiple', formData, {
                                                       headers: {
                                                         Authorization: `Bearer ${localStorage.getItem('token')}`,
                                                         'Content-Type': 'multipart/form-data'
                                                       }
                                                     });
-                                                    const newImages = res.data.images.map(img => `http://localhost:5000${img.url}`);
+                                                    const newImages = res.data.images.map(img => getImageUrl(img.url));
                                                     
                                                     // Find the color in the colors array and add images
                                                     const updatedColors = productForm.colors.map(c => {
@@ -1574,7 +1575,7 @@ const AdminDashboard = () => {
                                             {colorImages.map((img, imgIndex) => (
                                               <div key={imgIndex} className="color-image-preview-small">
                                                 <img 
-                                                  src={img.startsWith('http') ? img : `http://localhost:5000${img}`} 
+                                                  src={getImageUrl(img)} 
                                                   alt={`${color} ${imgIndex + 1}`}
                                                 />
                                                 <button
@@ -1655,7 +1656,7 @@ const AdminDashboard = () => {
                       <div className="product-image-admin">
                         {product.images && product.images[0] ? (
                           <img
-                            src={product.images[0].startsWith('http') ? product.images[0] : `http://localhost:5000${product.images[0]}`}
+                            src={getImageUrl(product.images[0])}
                             alt={product.name}
                           />
                         ) : (
@@ -1713,7 +1714,7 @@ const AdminDashboard = () => {
                       <div className="trending-product-image">
                         {product.images && product.images[0] ? (
                           <img
-                            src={product.images[0].startsWith('http') ? product.images[0] : `http://localhost:5000${product.images[0]}`}
+                            src={getImageUrl(product.images[0])}
                             alt={product.name}
                           />
                         ) : (

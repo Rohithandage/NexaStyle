@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
+import { getImageUrl } from '../utils/config';
 import './Products.css';
 
 // Color name to hex mapping
@@ -88,7 +89,7 @@ const Products = () => {
 
   const fetchCategories = async () => {
     try {
-      const res = await axios.get('/api/products/categories/all');
+      const res = await api.get('/api/products/categories/all');
       setCategories(res.data);
     } catch (error) {
       console.error('Error fetching categories:', error);
@@ -104,7 +105,7 @@ const Products = () => {
       const searchQuery = searchParams.get('search');
       if (searchQuery) params.search = searchQuery;
 
-      const res = await axios.get('/api/products', { params });
+      const res = await api.get('/api/products', { params });
       setProducts(res.data.products || []);
       setTotalPages(res.data.totalPages || 1);
     } catch (error) {
@@ -116,7 +117,7 @@ const Products = () => {
 
   const checkCartItems = async () => {
     try {
-      const res = await axios.get('/api/cart', {
+      const res = await api.get('/api/cart', {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -181,7 +182,7 @@ const Products = () => {
     }
 
     try {
-      await axios.post(
+      await api.post(
         '/api/cart/add',
         payload,
         {
@@ -288,7 +289,7 @@ const Products = () => {
                         <div className="product-image">
                           {product.images && product.images[0] ? (
                             <img 
-                              src={product.images[0].startsWith('http') ? product.images[0] : `http://localhost:5000${product.images[0]}`} 
+                              src={getImageUrl(product.images[0])} 
                               alt={product.name}
                               onError={(e) => {
                                 e.target.onerror = null;

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
 import './Reviews.css';
@@ -19,7 +19,7 @@ const Reviews = ({ productId }) => {
 
   const fetchReviews = async () => {
     try {
-      const res = await axios.get(`/api/reviews/product/${productId}`);
+      const res = await api.get(`/api/reviews/product/${productId}`);
       setReviews(res.data);
     } catch (error) {
       console.error('Error fetching reviews:', error);
@@ -39,7 +39,7 @@ const Reviews = ({ productId }) => {
     }
 
     try {
-      const response = await axios.post(
+      const response = await api.post(
         '/api/reviews',
         { productId, rating, comment: comment.trim() },
         {

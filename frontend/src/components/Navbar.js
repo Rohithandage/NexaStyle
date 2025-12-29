@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { FiShoppingCart, FiUser, FiChevronDown, FiSearch } from 'react-icons/fi';
-import axios from 'axios';
+import api from '../api/api';
 import './Navbar.css';
 
 const Navbar = () => {
@@ -46,7 +46,7 @@ const Navbar = () => {
 
   const fetchCategories = async () => {
     try {
-      const res = await axios.get('/api/products/categories/all');
+      const res = await api.get('/api/products/categories/all');
       setCategories(res.data || []);
     } catch (error) {
       console.error('Error fetching categories:', error);
@@ -55,14 +55,13 @@ const Navbar = () => {
 
   const fetchCartCount = async () => {
     try {
-      const res = await fetch('/api/cart', {
+      const res = await api.get('/api/cart', {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
       });
-      if (res.ok) {
-        const data = await res.json();
-        const count = data.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+      if (res.data) {
+        const count = res.data.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
         setCartCount(count);
       }
     } catch (error) {

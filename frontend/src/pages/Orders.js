@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
+import { getImageUrl } from '../utils/config';
 import './Orders.css';
 
 const Orders = () => {
@@ -16,7 +17,7 @@ const Orders = () => {
 
   const fetchOrders = async () => {
     try {
-      const res = await axios.get('/api/orders/my-orders', {
+      const res = await api.get('/api/orders/my-orders', {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -83,7 +84,7 @@ const Orders = () => {
                     <div key={index} className="order-item">
                       <div className="order-item-image">
                         {item.product?.images?.[0] ? (
-                          <img src={item.product.images[0]} alt={item.product.name} />
+                          <img src={getImageUrl(item.product.images[0])} alt={item.product.name} />
                         ) : (
                           <div className="placeholder-image">No Image</div>
                         )}

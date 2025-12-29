@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
 import { FiTrash2, FiPlus, FiMinus } from 'react-icons/fi';
+import { getImageUrl } from '../utils/config';
 import './Cart.css';
 
 const Cart = () => {
@@ -22,7 +23,7 @@ const Cart = () => {
 
   const fetchCart = async () => {
     try {
-      const res = await axios.get('/api/cart', {
+      const res = await api.get('/api/cart', {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -38,7 +39,7 @@ const Cart = () => {
   const updateQuantity = async (itemId, newQuantity) => {
     if (newQuantity < 1) return;
     try {
-      await axios.put(
+      await api.put(
         `/api/cart/update/${itemId}`,
         { quantity: newQuantity },
         {
@@ -57,7 +58,7 @@ const Cart = () => {
 
   const removeItem = async (itemId) => {
     try {
-      await axios.delete(`/api/cart/remove/${itemId}`, {
+      await api.delete(`/api/cart/remove/${itemId}`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -95,7 +96,7 @@ const Cart = () => {
                 <div className="cart-item-image">
                   {item.product?.images?.[0] ? (
                     <img 
-                      src={item.product.images[0].startsWith('http') ? item.product.images[0] : `http://localhost:5000${item.product.images[0]}`} 
+                      src={getImageUrl(item.product.images[0])} 
                       alt={item.product.name}
                       onError={(e) => {
                         e.target.onerror = null;

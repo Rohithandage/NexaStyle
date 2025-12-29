@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
 import './Checkout.css';
@@ -32,7 +32,7 @@ const Checkout = () => {
 
   const fetchCart = async () => {
     try {
-      const res = await axios.get('/api/cart', {
+      const res = await api.get('/api/cart', {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -61,7 +61,7 @@ const Checkout = () => {
     setProcessing(true);
 
     try {
-      const res = await axios.post(
+      const res = await api.post(
         '/api/orders/create',
         {
           shippingAddress,
@@ -85,7 +85,7 @@ const Checkout = () => {
           order_id: res.data.razorpayOrderId,
           handler: async (response) => {
             try {
-              await axios.post(
+              await api.post(
                 '/api/orders/verify-payment',
                 {
                   orderId: res.data.order._id,

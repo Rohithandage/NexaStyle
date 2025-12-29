@@ -49,7 +49,10 @@ const Login = () => {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = 'http://localhost:5000/api/auth/google';
+    const backendUrl = process.env.NODE_ENV === "production"
+      ? "https://nexastyle1.onrender.com"
+      : "http://localhost:5000";
+    window.location.href = `${backendUrl}/api/auth/google`;
   };
 
   return (

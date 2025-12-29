@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
 import Reviews from '../components/Reviews';
+import { getImageUrl } from '../utils/config';
 import './ProductDetail.css';
 
 // Color name to hex mapping
@@ -151,7 +152,7 @@ const ProductDetail = () => {
 
   const checkCartItems = async () => {
     try {
-      const res = await axios.get('/api/cart', {
+      const res = await api.get('/api/cart', {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -165,7 +166,7 @@ const ProductDetail = () => {
 
   const fetchProduct = async () => {
     try {
-      const res = await axios.get(`/api/products/${id}`);
+      const res = await api.get(`/api/products/${id}`);
       const productData = res.data;
       
       // Handle both old format (array of strings) and new format (array of objects)
@@ -205,7 +206,7 @@ const ProductDetail = () => {
     }
 
     try {
-      await axios.post(
+      await api.post(
         '/api/cart/add',
         {
           productId: id,
@@ -250,11 +251,9 @@ const ProductDetail = () => {
               product.colors.forEach(colorItem => {
                 if (typeof colorItem === 'object' && colorItem.images && colorItem.images.length > 0) {
                   colorItem.images.forEach(img => {
-                    const imgUrl = img.startsWith('http') ? img : `http://localhost:5000${img}`;
+                    const imgUrl = getImageUrl(img);
                     // Check if image already exists (normalize both for comparison)
-                    const normalizedAllImages = allImages.map(existing => 
-                      existing.startsWith('http') ? existing : `http://localhost:5000${existing}`
-                    );
+                    const normalizedAllImages = allImages.map(existing => getImageUrl(existing));
                     if (!normalizedAllImages.includes(imgUrl)) {
                       allImages.push(img);
                     }
@@ -264,9 +263,7 @@ const ProductDetail = () => {
             }
             
             // Normalize all image URLs
-            allImages = allImages.map(img => 
-              img.startsWith('http') ? img : `http://localhost:5000${img}`
-            );
+            allImages = allImages.map(img => getImageUrl(img));
             
             // When color is selected, prioritize that color's images at the start
             let imagesToShow = [...allImages];
@@ -278,9 +275,7 @@ const ProductDetail = () => {
               
               if (colorObj && typeof colorObj === 'object' && colorObj.images && colorObj.images.length > 0) {
                 // Get color-specific images
-                const colorImages = colorObj.images.map(img => 
-                  img.startsWith('http') ? img : `http://localhost:5000${img}`
-                );
+                const colorImages = colorObj.images.map(img => getImageUrl(img));
                 // Put color images first, then other images
                 const otherImages = allImages.filter(img => !colorImages.includes(img));
                 imagesToShow = [...colorImages, ...otherImages];
