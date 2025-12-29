@@ -15,18 +15,23 @@ export const getBackendUrl = () => {
 export const getImageUrl = (imagePath) => {
   if (!imagePath) return "";
   
-  // Check if we're in production - use window.location for runtime detection
-  const isProduction = 
-    typeof window !== 'undefined' && (
-      process.env.NODE_ENV === "production" || 
-      window.location.hostname === "nexastyle.onrender.com" ||
-      window.location.hostname.includes("render.com") ||
-      window.location.protocol === "https:"
-    );
-  
-  // If it's already a full URL
+  // If it's already a full URL (including Cloudinary URLs), return as-is
   if (imagePath.startsWith("http")) {
-    // ALWAYS replace localhost URLs in production (more aggressive check)
+    // Check if it's a Cloudinary URL - return as-is
+    if (imagePath.includes("cloudinary.com") || imagePath.includes("res.cloudinary.com")) {
+      return imagePath;
+    }
+    
+    // Check if we're in production - use window.location for runtime detection
+    const isProduction = 
+      typeof window !== 'undefined' && (
+        process.env.NODE_ENV === "production" || 
+        window.location.hostname === "nexastyle.onrender.com" ||
+        window.location.hostname.includes("render.com") ||
+        window.location.protocol === "https:"
+      );
+    
+    // Replace localhost URLs in production (for old local storage URLs)
     if (isProduction && (imagePath.includes("localhost") || imagePath.includes("127.0.0.1"))) {
       try {
         // Extract the path from the URL (e.g., "/uploads/image.jpg")

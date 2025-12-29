@@ -4,6 +4,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const passport = require('passport');
 const path = require('path');
+const fs = require('fs');
 
 dotenv.config();
 
@@ -47,8 +48,28 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(passport.initialize());
 
-// Serve static files from uploads directory
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('Created uploads directory');
+}
+
+// Serve static files from uploads directory with CORS headers
+app.use('/uploads', (req, res, next) => {
+  // Set CORS headers for static file requests
+  const origin = req.headers.origin;
+  if (allowedOrigins.indexOf(origin) !== -1) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+  next();
+}, express.static(uploadsDir, {
+  setHeaders: (res, filePath) => {
+    // Add cache control headers
+    res.setHeader('Cache-Control', 'public, max-age=31536000');
+  }
+}));
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/nexastyle', {

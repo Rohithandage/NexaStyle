@@ -441,7 +441,8 @@ const AdminDashboard = () => {
   };
 
   const copyImageUrl = (url) => {
-    const fullUrl = `${getBackendUrl()}${url}`;
+    // If it's already a full URL (Cloudinary), use as-is, otherwise prepend backend URL
+    const fullUrl = url.startsWith('http') ? url : `${getBackendUrl()}${url}`;
     navigator.clipboard.writeText(fullUrl);
     toast.success('Image URL copied to clipboard!');
   };
@@ -490,7 +491,8 @@ const AdminDashboard = () => {
   };
 
   const handleAddImageToProduct = (imageUrl) => {
-    const fullUrl = `${getBackendUrl()}${imageUrl}`;
+    // If it's already a full URL (Cloudinary), use it as-is, otherwise prepend backend URL
+    const fullUrl = imageUrl.startsWith('http') ? imageUrl : `${getBackendUrl()}${imageUrl}`;
     if (!productForm.images.includes(fullUrl)) {
       setProductForm({
         ...productForm,
@@ -524,7 +526,10 @@ const AdminDashboard = () => {
             'Content-Type': 'multipart/form-data'
           }
         });
-        const fullUrl = `${getBackendUrl()}${res.data.imageUrl}`;
+        // Cloudinary returns full URLs, so use as-is if it's already a full URL
+        const fullUrl = res.data.imageUrl.startsWith('http') 
+          ? res.data.imageUrl 
+          : `${getBackendUrl()}${res.data.imageUrl}`;
         if (!productForm.images.includes(fullUrl)) {
           setProductForm({
             ...productForm,
