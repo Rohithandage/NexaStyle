@@ -101,7 +101,8 @@ router.get('/google/callback',
   async (req, res) => {
     try {
       const token = generateToken(req.user._id);
-      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?token=${token}`);
+      // Redirect to frontend login-success page (not /auth/callback)
+      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/login-success?token=${token}`);
     } catch (error) {
       res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/login?error=auth_failed`);
     }
