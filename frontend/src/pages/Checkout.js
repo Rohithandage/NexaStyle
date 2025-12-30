@@ -85,7 +85,7 @@ const Checkout = () => {
           order_id: res.data.razorpayOrderId,
           handler: async (response) => {
             try {
-              await api.post(
+              const verifyRes = await api.post(
                 '/api/orders/verify-payment',
                 {
                   orderId: res.data.order._id,
@@ -99,10 +99,22 @@ const Checkout = () => {
                   }
                 }
               );
-              toast.success('Payment successful! Order placed.');
-              navigate('/orders');
+              
+              if (verifyRes.data.success) {
+                toast.success('Payment successful! Order placed.');
+                navigate('/orders');
+              } else {
+                toast.error(verifyRes.data.message || 'Payment verification failed');
+              }
             } catch (error) {
-              toast.error('Payment verification failed');
+              console.error('Payment verification error:', error);
+              const errorMessage = error.response?.data?.message || error.message || 'Payment verification failed';
+              toast.error(errorMessage);
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              toast.info('Payment cancelled');
             }
           },
           prefill: {

@@ -95,19 +95,25 @@ const AdminDashboard = () => {
 
   const handleRemoveHeaderImage = async (imageUrl) => {
     try {
+      // Normalize the URL to match what's stored in the database
+      const normalizedUrl = getImageUrl(imageUrl);
+      
       await api.delete(
         '/api/admin/settings/header-images',
         {
-          data: { imageUrl },
+          data: { imageUrl: normalizedUrl },
           headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
           }
         }
       );
       toast.success('Image removed from header carousel!');
       fetchHeaderImages();
     } catch (error) {
-      toast.error('Error removing header image');
+      console.error('Error removing header image:', error);
+      const errorMessage = error.response?.data?.message || 'Error removing header image';
+      toast.error(errorMessage);
     }
   };
 
@@ -393,6 +399,15 @@ const AdminDashboard = () => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
 
+    // Validate file sizes
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    const oversizedFiles = files.filter(file => file.size > maxSize);
+    if (oversizedFiles.length > 0) {
+      toast.error(`Some files exceed 5MB limit: ${oversizedFiles.map(f => f.name).join(', ')}`);
+      e.target.value = ''; // Reset file input
+      return;
+    }
+
     setUploading(true);
     try {
       const formData = new FormData();
@@ -400,35 +415,53 @@ const AdminDashboard = () => {
         formData.append('image', files[0]);
         const res = await api.post('/api/upload/single', formData, {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-            'Content-Type': 'multipart/form-data'
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+            // Don't set Content-Type - axios will set it automatically with boundary
           }
         });
-        toast.success('Image uploaded successfully');
+        if (res.data.success) {
+          toast.success('Image uploaded successfully');
+        } else {
+          throw new Error(res.data.message || 'Upload failed');
+        }
       } else {
         files.forEach(file => {
           formData.append('images', file);
         });
         const res = await api.post('/api/upload/multiple', formData, {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-            'Content-Type': 'multipart/form-data'
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+            // Don't set Content-Type - axios will set it automatically with boundary
           }
         });
-        toast.success(`${files.length} images uploaded successfully`);
+        if (res.data.success) {
+          toast.success(`${files.length} images uploaded successfully`);
+        } else {
+          throw new Error(res.data.message || 'Upload failed');
+        }
       }
       fetchImages();
+      // Reset file input
+      e.target.value = '';
     } catch (error) {
-      toast.error('Error uploading images');
+      console.error('Image upload error:', error);
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Error uploading images';
+      toast.error(errorMessage);
     } finally {
       setUploading(false);
     }
   };
 
-  const handleDeleteImage = async (filename) => {
+  const handleDeleteImage = async (imageData) => {
     if (!window.confirm('Are you sure you want to delete this image?')) return;
     try {
-      await api.delete(`/api/upload/${filename}`, {
+      // Use publicId if available, otherwise use filename or URL
+      const identifier = imageData.publicId || imageData.filename || imageData.url || imageData;
+      
+      // Encode the identifier if it's a URL or contains special characters
+      const encodedIdentifier = encodeURIComponent(identifier);
+      
+      await api.delete(`/api/upload/${encodedIdentifier}`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -436,7 +469,9 @@ const AdminDashboard = () => {
       toast.success('Image deleted successfully');
       fetchImages();
     } catch (error) {
-      toast.error('Error deleting image');
+      console.error('Error deleting image:', error);
+      const errorMessage = error.response?.data?.message || 'Error deleting image';
+      toast.error(errorMessage);
     }
   };
 
@@ -1184,6 +1219,52 @@ const AdminDashboard = () => {
                 </div>
               ) : (
                 <p className="no-header-image">No header images set. Add images below to create a carousel.</p>
+              )}
+            </div>
+
+            <div className="uploaded-images-section">
+              <h3>All Uploaded Images ({uploadedImages.length})</h3>
+              {uploadedImages.length > 0 ? (
+                <div className="uploaded-images-grid">
+                  {uploadedImages.map((image, index) => (
+                    <div key={index} className="uploaded-image-item">
+                      <img 
+                        src={getImageUrl(image.url || image)} 
+                        alt={image.filename || `Image ${index + 1}`}
+                        onError={(e) => {
+                          console.error('Image load error:', image);
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                      <div className="image-actions">
+                        <button
+                          onClick={() => copyImageUrl(image.url || image)}
+                          className="copy-url-btn"
+                          title="Copy image URL"
+                        >
+                          📋 Copy URL
+                        </button>
+                        <button
+                          onClick={() => handleAddHeaderImage(image.url || image)}
+                          className="add-header-btn"
+                          title="Add to header carousel"
+                        >
+                          ➕ Add to Header
+                        </button>
+                        <button
+                          onClick={() => handleDeleteImage(image)}
+                          className="delete-image-btn"
+                          title="Delete image"
+                        >
+                          🗑️ Delete
+                        </button>
+                      </div>
+                      <p className="image-filename">{image.filename || 'Image'}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="no-images-message">No images uploaded yet. Upload images above to get started.</p>
               )}
             </div>
 

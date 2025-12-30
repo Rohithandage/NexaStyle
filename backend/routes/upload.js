@@ -69,7 +69,19 @@ const uploadToCloudinary = (buffer, folder = 'nexastyle') => {
 router.post('/single', auth, admin, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: 'No file uploaded' });
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+    
+    // Validate file type
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(req.file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(req.file.mimetype);
+    
+    if (!mimetype || !extname) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid file type. Only image files (JPEG, PNG, GIF, WebP) are allowed.' 
+      });
     }
     
     // Upload to Cloudinary
@@ -83,7 +95,11 @@ router.post('/single', auth, admin, upload.single('image'), async (req, res) => 
     });
   } catch (error) {
     console.error('Cloudinary upload error:', error);
-    res.status(500).json({ message: 'Upload failed', error: error.message });
+    res.status(500).json({ 
+      success: false,
+      message: 'Upload failed', 
+      error: error.message || 'Unknown error occurred'
+    });
   }
 });
 
@@ -91,7 +107,22 @@ router.post('/single', auth, admin, upload.single('image'), async (req, res) => 
 router.post('/multiple', auth, admin, upload.array('images', 10), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ message: 'No files uploaded' });
+      return res.status(400).json({ success: false, message: 'No files uploaded' });
+    }
+    
+    // Validate file types
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const invalidFiles = req.files.filter(file => {
+      const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+      const mimetype = allowedTypes.test(file.mimetype);
+      return !mimetype || !extname;
+    });
+    
+    if (invalidFiles.length > 0) {
+      return res.status(400).json({ 
+        success: false,
+        message: `Invalid file types. Only image files (JPEG, PNG, GIF, WebP) are allowed. Invalid files: ${invalidFiles.map(f => f.originalname).join(', ')}` 
+      });
     }
     
     // Upload all files to Cloudinary
@@ -100,14 +131,52 @@ router.post('/multiple', auth, admin, upload.array('images', 10), async (req, re
         url: result.secure_url,
         publicId: result.public_id,
         filename: result.original_filename || file.originalname
-      }))
+      })).catch(error => {
+        console.error(`Error uploading ${file.originalname}:`, error);
+        throw { file: file.originalname, error: error.message };
+      })
     );
     
-    const imageUrls = await Promise.all(uploadPromises);
-    res.json({ success: true, images: imageUrls });
+    const results = await Promise.allSettled(uploadPromises);
+    
+    // Separate successful and failed uploads
+    const successful = [];
+    const failed = [];
+    
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        successful.push(result.value);
+      } else {
+        failed.push({
+          filename: req.files[index].originalname,
+          error: result.reason?.error || result.reason?.message || 'Unknown error'
+        });
+      }
+    });
+    
+    if (successful.length === 0) {
+      return res.status(500).json({ 
+        success: false,
+        message: 'All uploads failed', 
+        failed 
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      images: successful,
+      failed: failed.length > 0 ? failed : undefined,
+      message: failed.length > 0 
+        ? `${successful.length} uploaded successfully, ${failed.length} failed`
+        : 'All images uploaded successfully'
+    });
   } catch (error) {
     console.error('Cloudinary upload error:', error);
-    res.status(500).json({ message: 'Upload failed', error: error.message });
+    res.status(500).json({ 
+      success: false,
+      message: 'Upload failed', 
+      error: error.message || 'Unknown error occurred'
+    });
   }
 });
 
@@ -150,50 +219,99 @@ router.get('/all', auth, admin, async (req, res) => {
 });
 
 // Delete image
-router.delete('/:filename', auth, admin, async (req, res) => {
+router.delete('/:identifier', auth, admin, async (req, res) => {
   try {
-    const filename = req.params.filename;
+    // Decode the identifier (it might be URL-encoded)
+    let identifier = decodeURIComponent(req.params.identifier);
     
     // Try to delete from Cloudinary
-    // The filename might be a public_id or a URL
-    let publicId = filename;
+    // The identifier might be a public_id, filename, or a full URL
+    let publicId = identifier;
     
-    // If it's a URL, extract the public_id
-    if (filename.includes('cloudinary.com')) {
-      const urlParts = filename.split('/');
-      const uploadIndex = urlParts.findIndex(part => part === 'upload');
-      if (uploadIndex !== -1 && urlParts[uploadIndex + 2]) {
-        // Extract public_id from URL
-        const versionAndId = urlParts[uploadIndex + 2];
-        publicId = versionAndId.split('.')[0];
-        // Remove version prefix if present
-        if (publicId.includes('v')) {
-          publicId = publicId.split('v')[1];
+    // If it's a full Cloudinary URL, extract the public_id
+    if (identifier.includes('cloudinary.com') || identifier.includes('res.cloudinary.com')) {
+      try {
+        // Cloudinary URL format: https://res.cloudinary.com/{cloud_name}/image/upload/{version}/{public_id}.{format}
+        // or: https://res.cloudinary.com/{cloud_name}/image/upload/{public_id}.{format}
+        const urlParts = identifier.split('/');
+        const uploadIndex = urlParts.findIndex(part => part === 'upload');
+        
+        if (uploadIndex !== -1) {
+          // Get the part after 'upload'
+          const afterUpload = urlParts.slice(uploadIndex + 1);
+          
+          // Find the part that contains the public_id (usually after version if present)
+          let idPart = '';
+          for (let i = 0; i < afterUpload.length; i++) {
+            const part = afterUpload[i];
+            // Skip version numbers (v1234567890)
+            if (part.startsWith('v') && /^v\d+$/.test(part)) {
+              continue;
+            }
+            // This should be the public_id (might have file extension)
+            idPart = part;
+            break;
+          }
+          
+          if (idPart) {
+            // Remove file extension
+            publicId = idPart.split('.')[0];
+            // Ensure it includes the folder prefix if not already present
+            if (!publicId.startsWith('nexastyle/')) {
+              publicId = `nexastyle/${publicId}`;
+            }
+          }
         }
+      } catch (urlError) {
+        console.error('Error parsing Cloudinary URL:', urlError);
+        // Fall through to try using identifier as-is
       }
-    } else if (!filename.includes('/')) {
-      // If it's just a filename, prepend the folder
-      publicId = `nexastyle/${filename}`;
+    } else if (!identifier.includes('/')) {
+      // If it's just a filename/ID without path, prepend the folder
+      publicId = `nexastyle/${identifier}`;
+    } else if (!identifier.startsWith('nexastyle/')) {
+      // If it has a path but doesn't start with nexastyle/, add it
+      publicId = `nexastyle/${identifier}`;
     }
+    
+    console.log('Attempting to delete from Cloudinary with publicId:', publicId);
     
     try {
       const result = await cloudinary.uploader.destroy(publicId);
+      console.log('Cloudinary delete result:', result);
+      
       if (result.result === 'ok' || result.result === 'not found') {
         res.json({ success: true, message: 'Image deleted successfully' });
       } else {
-        res.status(404).json({ message: 'Image not found in Cloudinary' });
+        // Try without the folder prefix
+        if (publicId.startsWith('nexastyle/')) {
+          const altPublicId = publicId.replace('nexastyle/', '');
+          console.log('Trying alternative publicId:', altPublicId);
+          const altResult = await cloudinary.uploader.destroy(altPublicId);
+          if (altResult.result === 'ok' || altResult.result === 'not found') {
+            return res.json({ success: true, message: 'Image deleted successfully' });
+          }
+        }
+        res.status(404).json({ message: 'Image not found in Cloudinary', result: result.result });
       }
     } catch (cloudinaryError) {
+      console.error('Cloudinary delete error:', cloudinaryError);
+      
       // Fallback: try to delete from local storage if it exists
-      const filePath = path.join(uploadsDir, filename);
+      const filePath = path.join(uploadsDir, identifier);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
         res.json({ success: true, message: 'Image deleted successfully (local)' });
       } else {
-        res.status(404).json({ message: 'Image not found' });
+        res.status(404).json({ 
+          message: 'Image not found', 
+          error: cloudinaryError.message,
+          attemptedPublicId: publicId
+        });
       }
     }
   } catch (error) {
+    console.error('Error deleting image:', error);
     res.status(500).json({ message: 'Error deleting image', error: error.message });
   }
 });

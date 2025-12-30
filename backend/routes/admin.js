@@ -326,20 +326,87 @@ router.post('/settings/header-images', async (req, res) => {
 // Remove header image
 router.delete('/settings/header-images', async (req, res) => {
   try {
-    const { imageUrl } = req.body;
+    // Support both req.body (for JSON) and req.query (as fallback)
+    const imageUrl = req.body?.imageUrl || req.query?.imageUrl;
+    
+    if (!imageUrl) {
+      return res.status(400).json({ message: 'Image URL is required' });
+    }
+    
     const setting = await Settings.findOne({ key: 'header_images' });
     
     if (setting) {
       let images = JSON.parse(setting.value);
-      images = images.filter(img => img !== imageUrl);
-      setting.value = JSON.stringify(images);
-      setting.updatedAt = new Date();
-      await setting.save();
-      res.json({ success: true, headerImages: images });
+      const initialLength = images.length;
+      
+      // Filter out the image - try multiple matching strategies
+      images = images.filter(img => {
+        if (!img) return true;
+        
+        // Exact match
+        if (img === imageUrl) return false;
+        
+        // Normalize URLs by removing trailing slashes and comparing
+        const normalize = (url) => {
+          if (!url) return '';
+          return url.toString().trim().replace(/\/$/, '');
+        };
+        
+        const normalizedImg = normalize(img);
+        const normalizedTarget = normalize(imageUrl);
+        
+        // Normalized match
+        if (normalizedImg === normalizedTarget) return false;
+        
+        // Check if URLs point to the same resource (one contains the other's unique identifier)
+        // This handles cases where URLs might have different protocols or domains
+        if (normalizedImg && normalizedTarget) {
+          // Extract the unique part (after the last slash or the filename)
+          const getUniquePart = (url) => {
+            try {
+              const urlObj = new URL(url);
+              return urlObj.pathname.split('/').pop() || urlObj.pathname;
+            } catch {
+              return url.split('/').pop() || url;
+            }
+          };
+          
+          const imgPart = getUniquePart(img);
+          const targetPart = getUniquePart(imageUrl);
+          
+          // If the unique parts match, it's the same image
+          if (imgPart && targetPart && imgPart === targetPart) return false;
+          
+          // Also check if one URL contains the other (for partial matches)
+          if (normalizedImg.includes(normalizedTarget) || normalizedTarget.includes(normalizedImg)) {
+            return false;
+          }
+        }
+        
+        return true;
+      });
+      
+      // Only save if something was actually removed
+      if (images.length < initialLength) {
+        setting.value = JSON.stringify(images);
+        setting.updatedAt = new Date();
+        await setting.save();
+        res.json({ success: true, headerImages: images, message: 'Image removed successfully' });
+      } else {
+        // Log for debugging
+        console.log('Image not found. Looking for:', imageUrl);
+        console.log('Current images:', images);
+        res.status(404).json({ 
+          success: false, 
+          message: 'Image not found in header images', 
+          headerImages: images 
+        });
+      }
     } else {
-      res.json({ success: true, headerImages: [] });
+      res.json({ success: true, headerImages: [], message: 'No header images found' });
     }
   } catch (error) {
+    console.error('Error removing header image:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
