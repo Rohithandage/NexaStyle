@@ -47,7 +47,7 @@ app.use(cors(corsOptions));
 
 // Skip JSON parsing for webhook routes (need raw body for signature verification)
 app.use((req, res, next) => {
-  if (req.path === '/api/orders/webhook') {
+  if (req.path === '/api/razorpay/webhook' || req.path === '/api/orders/webhook') {
     return express.raw({ type: 'application/json' })(req, res, next);
   }
   express.json()(req, res, next);
@@ -97,6 +97,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api/settings', require('./routes/settings'));
+app.use('/api/razorpay', require('./routes/razorpay')); // Razorpay webhook route
 
 // Health check
 app.get('/api/health', (req, res) => {
