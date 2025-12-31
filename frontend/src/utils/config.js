@@ -1,5 +1,12 @@
 // Backend URL configuration
 export const getBackendUrl = () => {
+  // Guard window access for SSR/mobile safety
+  if (typeof window === 'undefined') {
+    return process.env.NODE_ENV === "production" 
+      ? "https://nexastyle1.onrender.com"
+      : "http://localhost:5000";
+  }
+  
   // Check if we're in production by checking the current hostname
   const isProduction = 
     process.env.NODE_ENV === "production" || 

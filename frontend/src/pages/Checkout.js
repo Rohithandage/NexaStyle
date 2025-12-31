@@ -22,6 +22,7 @@ const Checkout = () => {
   });
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -30,24 +31,9 @@ const Checkout = () => {
     }
     fetchCart();
     
-    // Ensure Razorpay script is loaded - use synchronous loading for mobile compatibility
-    if (!window.Razorpay) {
-      // Check if script already exists
-      const existingScript = document.querySelector('script[src*="razorpay.com"]');
-      if (!existingScript) {
-        const script = document.createElement('script');
-        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-        script.async = false; // Load synchronously for better mobile compatibility
-        script.crossOrigin = 'anonymous';
-        script.onerror = () => {
-          console.error('Failed to load Razorpay script');
-          toast.error('Payment gateway failed to load. Please refresh the page.');
-        };
-        script.onload = () => {
-          console.log('Razorpay script loaded successfully');
-        };
-        document.head.appendChild(script);
-      }
+    // Detect mobile device safely
+    if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
+      setIsMobile(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
     }
   }, [isAuthenticated]);
 
@@ -77,6 +63,55 @@ const Checkout = () => {
     });
   };
 
+  // Lazy load Razorpay script ONLY when user clicks pay
+  const loadRazorpay = () => {
+    return new Promise((resolve, reject) => {
+      // Guard window access
+      if (typeof window === 'undefined') {
+        reject(new Error('Window not available'));
+        return;
+      }
+
+      // If already loaded, resolve immediately
+      if (window.Razorpay && typeof window.Razorpay === 'function') {
+        resolve(true);
+        return;
+      }
+
+      // Check if script already exists
+      const existingScript = document.querySelector('script[src*="razorpay.com"]');
+      if (existingScript) {
+        // Wait for it to load
+        existingScript.onload = () => resolve(true);
+        existingScript.onerror = () => reject(new Error('Script load failed'));
+        return;
+      }
+
+      // Create and load script
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true; // Async for non-blocking
+      script.crossOrigin = 'anonymous';
+      
+      script.onload = () => {
+        // Wait a bit for Razorpay to initialize
+        setTimeout(() => {
+          if (window.Razorpay && typeof window.Razorpay === 'function') {
+            resolve(true);
+          } else {
+            reject(new Error('Razorpay not initialized'));
+          }
+        }, 100);
+      };
+      
+      script.onerror = () => {
+        reject(new Error('Failed to load Razorpay script'));
+      };
+      
+      document.body.appendChild(script);
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setProcessing(true);
@@ -96,35 +131,16 @@ const Checkout = () => {
       );
 
       if (paymentMethod === 'card' || paymentMethod === 'upi') {
-        // Wait for Razorpay to be loaded (in case it was dynamically loaded)
-        let retries = 0;
-        const maxRetries = 20; // Increased retries for mobile
-        const checkRazorpay = () => {
-          if (window.Razorpay && typeof window.Razorpay === 'function') {
-            initializeRazorpay();
-          } else if (retries < maxRetries) {
-            retries++;
-            setTimeout(checkRazorpay, 300); // Increased delay for mobile
-          } else {
-            toast.error('Payment gateway not loaded. Please refresh the page and try again.');
-            setProcessing(false);
-          }
-        };
-        
-        const initializeRazorpay = () => {
-          // Detect mobile device
-          const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        try {
+          // Load Razorpay ONLY when user clicks pay (lazy loading)
+          await loadRazorpay();
           
-          // Additional check to ensure Razorpay is fully initialized
-          if (!window.Razorpay || typeof window.Razorpay !== 'function') {
-            toast.error('Payment gateway not ready. Please wait a moment and try again.');
-            setProcessing(false);
-            return;
+          // Guard window access
+          if (typeof window === 'undefined' || !window.Razorpay) {
+            throw new Error('Razorpay not available');
           }
-          
-          // Small delay on mobile to ensure all assets are loaded
-          const openModal = () => {
-            // Initialize Razorpay with mobile-optimized configuration
+
+          // Initialize Razorpay with mobile-optimized configuration
           const options = {
             key: res.data.razorpayKeyId,
             amount: res.data.order.totalAmount * 100,
@@ -213,57 +229,32 @@ const Checkout = () => {
             })
           };
 
-          try {
-            const razorpay = new window.Razorpay(options);
-            
-            // Add event listeners for better error handling
-            razorpay.on('payment.failed', function (response) {
-              console.error('Payment failed:', response);
-              toast.error(`Payment failed: ${response.error?.description || response.error?.reason || 'Unknown error'}`);
-              setProcessing(false);
-            });
-            
-            razorpay.on('payment.authorized', function (response) {
-              console.log('Payment authorized:', response);
-            });
-            
-            // Open Razorpay modal with error handling
-            try {
-              // Add small delay on mobile to ensure assets are loaded
-              if (isMobile) {
-                setTimeout(() => {
-                  try {
-                    razorpay.open();
-                  } catch (openError) {
-                    console.error('Error opening Razorpay modal:', openError);
-                    toast.error('Failed to open payment gateway. Please try again.');
-                    setProcessing(false);
-                  }
-                }, 100);
-              } else {
-                razorpay.open();
-              }
-            } catch (openError) {
-              console.error('Error opening Razorpay modal:', openError);
-              toast.error('Failed to open payment gateway. Please try again.');
-              setProcessing(false);
-            }
-          } catch (error) {
-            console.error('Razorpay initialization error:', error);
-            toast.error('Failed to initialize payment gateway. Please refresh the page and try again.');
-            setProcessing(false);
-          }
-          };
+          const razorpay = new window.Razorpay(options);
           
-          // Execute with delay on mobile
+          // Add event listeners for better error handling
+          razorpay.on('payment.failed', function (response) {
+            console.error('Payment failed:', response);
+            toast.error(`Payment failed: ${response.error?.description || response.error?.reason || 'Unknown error'}`);
+            setProcessing(false);
+          });
+          
+          razorpay.on('payment.authorized', function (response) {
+            console.log('Payment authorized:', response);
+          });
+          
+          // Open Razorpay modal with small delay on mobile
           if (isMobile) {
-            setTimeout(openModal, 200);
+            setTimeout(() => {
+              razorpay.open();
+            }, 100);
           } else {
-            openModal();
+            razorpay.open();
           }
-        };
-        
-        checkRazorpay();
+        } catch (error) {
+          console.error('Razorpay error:', error);
+          toast.error(error.message || 'Failed to initialize payment gateway. Please try again.');
+          setProcessing(false);
+        }
       } else {
         toast.success('Order placed successfully!');
         navigate('/orders');

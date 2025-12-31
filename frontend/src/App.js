@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './App.css';
+import { getBackendUrl } from './utils/config';
 
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
@@ -25,6 +26,19 @@ import PrivateRoute from './components/PrivateRoute';
 import AdminRoute from './components/AdminRoute';
 
 function App() {
+  // Keep-alive ping to prevent Render from sleeping (only in production)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
+      const pingInterval = setInterval(() => {
+        // Ping health endpoint every 5 minutes
+        fetch(`${getBackendUrl()}/api/health`)
+          .catch(err => console.log('Health check ping failed:', err));
+      }, 5 * 60 * 1000); // 5 minutes
+
+      return () => clearInterval(pingInterval);
+    }
+  }, []);
+
   return (
     <AuthProvider>
       <Router>
