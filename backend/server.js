@@ -44,7 +44,15 @@ const corsOptions = {
 
 // Middleware
 app.use(cors(corsOptions));
-app.use(express.json());
+
+// Skip JSON parsing for webhook routes (need raw body for signature verification)
+app.use((req, res, next) => {
+  if (req.path === '/api/orders/webhook') {
+    return express.raw({ type: 'application/json' })(req, res, next);
+  }
+  express.json()(req, res, next);
+});
+
 app.use(express.urlencoded({ extended: true }));
 app.use(passport.initialize());
 
