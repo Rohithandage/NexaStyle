@@ -30,15 +30,24 @@ const Checkout = () => {
     }
     fetchCart();
     
-    // Ensure Razorpay script is loaded
+    // Ensure Razorpay script is loaded - use synchronous loading for mobile compatibility
     if (!window.Razorpay) {
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.async = true;
-      script.onerror = () => {
-        console.error('Failed to load Razorpay script');
-      };
-      document.body.appendChild(script);
+      // Check if script already exists
+      const existingScript = document.querySelector('script[src*="razorpay.com"]');
+      if (!existingScript) {
+        const script = document.createElement('script');
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.async = false; // Load synchronously for better mobile compatibility
+        script.crossOrigin = 'anonymous';
+        script.onerror = () => {
+          console.error('Failed to load Razorpay script');
+          toast.error('Payment gateway failed to load. Please refresh the page.');
+        };
+        script.onload = () => {
+          console.log('Razorpay script loaded successfully');
+        };
+        document.head.appendChild(script);
+      }
     }
   }, [isAuthenticated]);
 
@@ -89,117 +98,168 @@ const Checkout = () => {
       if (paymentMethod === 'card' || paymentMethod === 'upi') {
         // Wait for Razorpay to be loaded (in case it was dynamically loaded)
         let retries = 0;
-        const maxRetries = 10;
+        const maxRetries = 20; // Increased retries for mobile
         const checkRazorpay = () => {
-          if (window.Razorpay) {
+          if (window.Razorpay && typeof window.Razorpay === 'function') {
             initializeRazorpay();
           } else if (retries < maxRetries) {
             retries++;
-            setTimeout(checkRazorpay, 200);
+            setTimeout(checkRazorpay, 300); // Increased delay for mobile
           } else {
-            toast.error('Payment gateway not loaded. Please refresh the page.');
+            toast.error('Payment gateway not loaded. Please refresh the page and try again.');
             setProcessing(false);
           }
         };
         
         const initializeRazorpay = () => {
-
-        // Initialize Razorpay with mobile-optimized configuration
-        const options = {
-          key: res.data.razorpayKeyId,
-          amount: res.data.order.totalAmount * 100,
-          currency: 'INR',
-          name: 'NexaStyle',
-          description: 'Order Payment',
-          order_id: res.data.razorpayOrderId,
-          handler: async (response) => {
-            try {
-              const verifyRes = await api.post(
-                '/api/orders/verify-payment',
-                {
-                  orderId: res.data.order._id,
-                  paymentId: response.razorpay_payment_id,
-                  signature: response.razorpay_signature,
-                  razorpay_order_id: response.razorpay_order_id
-                },
-                {
-                  headers: {
-                    Authorization: `Bearer ${localStorage.getItem('token')}`
+          // Detect mobile device
+          const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+          
+          // Additional check to ensure Razorpay is fully initialized
+          if (!window.Razorpay || typeof window.Razorpay !== 'function') {
+            toast.error('Payment gateway not ready. Please wait a moment and try again.');
+            setProcessing(false);
+            return;
+          }
+          
+          // Small delay on mobile to ensure all assets are loaded
+          const openModal = () => {
+            // Initialize Razorpay with mobile-optimized configuration
+          const options = {
+            key: res.data.razorpayKeyId,
+            amount: res.data.order.totalAmount * 100,
+            currency: 'INR',
+            name: 'NexaStyle',
+            description: 'Order Payment',
+            order_id: res.data.razorpayOrderId,
+            handler: async (response) => {
+              try {
+                const verifyRes = await api.post(
+                  '/api/orders/verify-payment',
+                  {
+                    orderId: res.data.order._id,
+                    paymentId: response.razorpay_payment_id,
+                    signature: response.razorpay_signature,
+                    razorpay_order_id: response.razorpay_order_id
+                  },
+                  {
+                    headers: {
+                      Authorization: `Bearer ${localStorage.getItem('token')}`
+                    }
+                  }
+                );
+                
+                if (verifyRes.data.success) {
+                  toast.success('Payment successful! Order placed.');
+                  navigate('/orders');
+                } else {
+                  toast.error(verifyRes.data.message || 'Payment verification failed');
+                }
+              } catch (error) {
+                console.error('Payment verification error:', error);
+                const errorMessage = error.response?.data?.message || error.message || 'Payment verification failed';
+                toast.error(errorMessage);
+              }
+            },
+            modal: {
+              ondismiss: () => {
+                toast.info('Payment cancelled');
+                setProcessing(false);
+              },
+              escape: true,
+              animation: true
+            },
+            prefill: {
+              name: `${shippingAddress.firstName} ${shippingAddress.lastName}`.trim(),
+              email: '',
+              contact: shippingAddress.phone
+            },
+            theme: {
+              color: '#FF8C00'
+            },
+            // Mobile-specific optimizations
+            ...(isMobile && {
+              config: {
+                display: {
+                  blocks: {
+                    banks: {
+                      name: "All payment methods",
+                      instruments: [
+                        {
+                          method: "card"
+                        },
+                        {
+                          method: "netbanking"
+                        },
+                        {
+                          method: "wallet"
+                        },
+                        {
+                          method: "upi"
+                        }
+                      ]
+                    }
+                  },
+                  sequence: ["block.banks"],
+                  preferences: {
+                    show_default_blocks: true
                   }
                 }
-              );
-              
-              if (verifyRes.data.success) {
-                toast.success('Payment successful! Order placed.');
-                navigate('/orders');
-              } else {
-                toast.error(verifyRes.data.message || 'Payment verification failed');
-              }
-            } catch (error) {
-              console.error('Payment verification error:', error);
-              const errorMessage = error.response?.data?.message || error.message || 'Payment verification failed';
-              toast.error(errorMessage);
-            }
-          },
-          modal: {
-            ondismiss: () => {
-              toast.info('Payment cancelled');
-              setProcessing(false);
-            }
-          },
-          prefill: {
-            name: `${shippingAddress.firstName} ${shippingAddress.lastName}`.trim(),
-            email: '',
-            contact: shippingAddress.phone
-          },
-          theme: {
-            color: '#FF8C00'
-          },
-          // Mobile-specific optimizations
-          config: {
-            display: {
-              blocks: {
-                banks: {
-                  name: "All payment methods",
-                  instruments: [
-                    {
-                      method: "card"
-                    },
-                    {
-                      method: "netbanking"
-                    },
-                    {
-                      method: "wallet"
-                    },
-                    {
-                      method: "upi"
-                    }
-                  ]
-                }
               },
-              sequence: ["block.banks"],
-              preferences: {
-                show_default_blocks: true
+              retry: {
+                enabled: true,
+                max_count: 4
               }
-            }
-          },
-          retry: {
-            enabled: true,
-            max_count: 4
-          }
-        };
+            })
+          };
 
           try {
             const razorpay = new window.Razorpay(options);
+            
+            // Add event listeners for better error handling
             razorpay.on('payment.failed', function (response) {
-              toast.error(`Payment failed: ${response.error.description || 'Unknown error'}`);
+              console.error('Payment failed:', response);
+              toast.error(`Payment failed: ${response.error?.description || response.error?.reason || 'Unknown error'}`);
               setProcessing(false);
             });
-            razorpay.open();
+            
+            razorpay.on('payment.authorized', function (response) {
+              console.log('Payment authorized:', response);
+            });
+            
+            // Open Razorpay modal with error handling
+            try {
+              // Add small delay on mobile to ensure assets are loaded
+              if (isMobile) {
+                setTimeout(() => {
+                  try {
+                    razorpay.open();
+                  } catch (openError) {
+                    console.error('Error opening Razorpay modal:', openError);
+                    toast.error('Failed to open payment gateway. Please try again.');
+                    setProcessing(false);
+                  }
+                }, 100);
+              } else {
+                razorpay.open();
+              }
+            } catch (openError) {
+              console.error('Error opening Razorpay modal:', openError);
+              toast.error('Failed to open payment gateway. Please try again.');
+              setProcessing(false);
+            }
           } catch (error) {
             console.error('Razorpay initialization error:', error);
-            toast.error('Failed to initialize payment gateway. Please try again.');
+            toast.error('Failed to initialize payment gateway. Please refresh the page and try again.');
             setProcessing(false);
+          }
+          };
+          
+          // Execute with delay on mobile
+          if (isMobile) {
+            setTimeout(openModal, 200);
+          } else {
+            openModal();
           }
         };
         
