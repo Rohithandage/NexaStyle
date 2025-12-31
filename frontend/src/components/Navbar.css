@@ -66,6 +66,11 @@
   border-radius: 25px;
   font-weight: 500;
   transition: background 0.3s, color 0.3s;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 .navbar-login-link:hover {
@@ -198,6 +203,7 @@
   display: flex;
   flex: 1;
   max-width: 400px;
+  min-width: 200px;
   margin: 0 1rem;
   position: relative;
   align-items: center;
@@ -273,6 +279,14 @@
   border-radius: 25px;
   font-weight: 500;
   transition: background 0.3s;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
 }
 
 .navbar-button:hover {
@@ -380,6 +394,88 @@
   display: none;
 }
 
+/* Tablet styles (768px - 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .navbar-container {
+    padding: 0.5rem 1.5rem;
+    flex-wrap: nowrap;
+  }
+
+  .navbar-menu {
+    gap: 1.25rem;
+    flex: 0 1 auto;
+  }
+
+  .navbar-link {
+    font-size: 0.9rem;
+    padding: 0.5rem 0.5rem;
+  }
+
+  .navbar-search-desktop {
+    max-width: 300px;
+    min-width: 180px;
+    margin: 0 0.75rem;
+  }
+
+  .navbar-search-desktop .navbar-search-input {
+    padding: 0.55rem 2.25rem 0.55rem 0.9rem;
+    font-size: 0.85rem;
+  }
+
+  .navbar-search-desktop .navbar-search-button {
+    right: 0.4rem;
+  }
+
+  .navbar-search-desktop .navbar-search-button svg {
+    font-size: 1rem;
+  }
+
+  .navbar-icons {
+    gap: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  .navbar-login-link {
+    padding: 0.45rem 0.9rem;
+    font-size: 0.9rem;
+    white-space: nowrap;
+  }
+
+  .navbar-button {
+    padding: 0.45rem 0.9rem;
+    font-size: 0.9rem;
+    white-space: nowrap;
+  }
+
+  .navbar-icon {
+    font-size: 1.35rem;
+  }
+}
+
+/* Large tablets and small desktops (1025px - 1280px) */
+@media (min-width: 1025px) and (max-width: 1280px) {
+  .navbar-search-desktop {
+    max-width: 350px;
+    min-width: 220px;
+  }
+
+  .navbar-search-desktop .navbar-search-input {
+    padding: 0.58rem 2.4rem 0.58rem 0.95rem;
+    font-size: 0.88rem;
+  }
+
+  .navbar-login-link {
+    padding: 0.48rem 0.95rem;
+    font-size: 0.95rem;
+  }
+
+  .navbar-button {
+    padding: 0.48rem 0.95rem;
+    font-size: 0.95rem;
+  }
+}
+
+/* Mobile styles */
 @media (max-width: 768px) {
   .navbar {
     margin-bottom: 1rem;
@@ -510,20 +606,33 @@
 
   .navbar-mobile-auth-row .navbar-link {
     font-size: 0.85rem;
-    padding: 0.4rem 0.8rem;
+    padding: 0.5rem 0.9rem;
     white-space: nowrap;
     flex-shrink: 0;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .navbar-mobile-auth-row .navbar-login-link {
-    padding: 0.4rem 0.8rem;
+    padding: 0.5rem 0.9rem;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .navbar-mobile-auth-row .navbar-button {
     font-size: 0.85rem;
-    padding: 0.4rem 0.8rem;
+    padding: 0.5rem 0.9rem;
     white-space: nowrap;
     flex-shrink: 0;
+    min-width: fit-content;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .navbar-category-wrapper {
@@ -710,6 +819,76 @@
 }
 
 @media (max-width: 480px) {
+  .navbar-container {
+    padding: 0.25rem 0.75rem;
+  }
+
+  .navbar-logo-img {
+    height: 70px;
+    max-height: 70px;
+  }
+
+  .navbar-menu {
+    gap: 0.5rem;
+    padding: 0.2rem 0;
+  }
+
+  .navbar-link {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.2rem;
+  }
+
+  .navbar-mobile-auth-row {
+    gap: 0.4rem;
+    flex-wrap: nowrap;
+  }
+
+  .navbar-mobile-auth-row .navbar-search-mobile {
+    min-width: 120px;
+    flex: 1 1 auto;
+  }
+
+  .navbar-mobile-auth-row .navbar-search-input {
+    font-size: 0.75rem;
+    padding: 0.35rem 1.75rem 0.35rem 0.5rem;
+  }
+
+  .navbar-mobile-auth-row .navbar-search-button {
+    right: 0.4rem;
+    padding: 0.2rem;
+  }
+
+  .navbar-mobile-auth-row .navbar-search-button svg {
+    font-size: 0.9rem;
+  }
+
+  .navbar-mobile-auth-row .navbar-link,
+  .navbar-mobile-auth-row .navbar-login-link {
+    font-size: 0.75rem;
+    padding: 0.4rem 0.65rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .navbar-mobile-auth-row .navbar-button {
+    font-size: 0.75rem;
+    padding: 0.4rem 0.65rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .navbar-icon {
+    font-size: 1.15rem;
+  }
+
   .subcategory-link {
     padding: 0.65rem 0.875rem;
     font-size: 0.8rem;
