@@ -30,7 +30,7 @@ const AdminDashboard = () => {
     images: [],
     sizes: [],
     colors: [],
-    stock: '',
+    getPrintName: '',
     isTrending: false
   });
 
@@ -627,7 +627,6 @@ const AdminDashboard = () => {
         ...productForm,
         price: parseFloat(productForm.price),
         discountPrice: productForm.discountPrice ? parseFloat(productForm.discountPrice) : undefined,
-        stock: parseInt(productForm.stock),
         colors: formattedColors,
         sizes: validSizes,
         images: allImages // Include both general images and color-specific images
@@ -669,7 +668,7 @@ const AdminDashboard = () => {
         images: [],
         sizes: [],
         colors: [],
-        stock: '',
+        getPrintName: '',
         isTrending: false
       });
       fetchProducts();
@@ -723,7 +722,7 @@ const AdminDashboard = () => {
       images: generalImages,
       sizes: sizes,
       colors: colors,
-      stock: product.stock || '',
+      getPrintName: product.getPrintName || '',
       isTrending: product.isTrending || false
     });
     setShowProductForm(true);
@@ -1289,7 +1288,7 @@ const AdminDashboard = () => {
                     images: [],
                     sizes: [],
                     colors: [],
-                    stock: '',
+                    getPrintName: '',
                     isTrending: false
                   });
                 }}
@@ -1342,14 +1341,14 @@ const AdminDashboard = () => {
                         />
                       </div>
                       <div className="form-group">
-                        <label>Stock *</label>
+                        <label>GetPrint Name *</label>
                         <input
-                          type="number"
-                          name="stock"
-                          value={productForm.stock}
+                          type="text"
+                          name="getPrintName"
+                          value={productForm.getPrintName}
                           onChange={handleProductFormChange}
                           required
-                          min="0"
+                          placeholder="Enter GetPrint Name"
                         />
                       </div>
                     </div>
@@ -1758,7 +1757,7 @@ const AdminDashboard = () => {
                             <span className="original-price">₹{product.price}</span>
                           )}
                         </p>
-                        <p className="product-stock">Stock: {product.stock}</p>
+                        <p className="product-getprint-name">GetPrint Name: {product.getPrintName || 'N/A'}</p>
                       </div>
                       <div className="product-actions-admin">
                         <button

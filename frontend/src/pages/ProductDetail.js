@@ -466,7 +466,8 @@ const ProductDetail = () => {
                   return selectedSizeObj.stock === 0;
                 }
               }
-              return product.stock === 0;
+              // If no sizes or size stock info, allow adding to cart
+              return false;
             })()}
           >
             Add to Cart

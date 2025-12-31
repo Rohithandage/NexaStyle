@@ -55,9 +55,9 @@ const productSchema = new mongoose.Schema({
       type: String
     }]
   }],
-  stock: {
-    type: Number,
-    default: 0
+  getPrintName: {
+    type: String,
+    required: true
   },
   rating: {
     type: Number,
