@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
+import { getImageUrl } from '../utils/config';
 import './Checkout.css';
 
 const Checkout = () => {
@@ -28,6 +29,17 @@ const Checkout = () => {
       return;
     }
     fetchCart();
+    
+    // Ensure Razorpay script is loaded
+    if (!window.Razorpay) {
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onerror = () => {
+        console.error('Failed to load Razorpay script');
+      };
+      document.body.appendChild(script);
+    }
   }, [isAuthenticated]);
 
   const fetchCart = async () => {
@@ -75,7 +87,24 @@ const Checkout = () => {
       );
 
       if (paymentMethod === 'card' || paymentMethod === 'upi') {
-        // Initialize Razorpay
+        // Wait for Razorpay to be loaded (in case it was dynamically loaded)
+        let retries = 0;
+        const maxRetries = 10;
+        const checkRazorpay = () => {
+          if (window.Razorpay) {
+            initializeRazorpay();
+          } else if (retries < maxRetries) {
+            retries++;
+            setTimeout(checkRazorpay, 200);
+          } else {
+            toast.error('Payment gateway not loaded. Please refresh the page.');
+            setProcessing(false);
+          }
+        };
+        
+        const initializeRazorpay = () => {
+
+        // Initialize Razorpay with mobile-optimized configuration
         const options = {
           key: res.data.razorpayKeyId,
           amount: res.data.order.totalAmount * 100,
@@ -115,6 +144,7 @@ const Checkout = () => {
           modal: {
             ondismiss: () => {
               toast.info('Payment cancelled');
+              setProcessing(false);
             }
           },
           prefill: {
@@ -123,12 +153,57 @@ const Checkout = () => {
             contact: shippingAddress.phone
           },
           theme: {
-            color: '#007bff'
+            color: '#FF8C00'
+          },
+          // Mobile-specific optimizations
+          config: {
+            display: {
+              blocks: {
+                banks: {
+                  name: "All payment methods",
+                  instruments: [
+                    {
+                      method: "card"
+                    },
+                    {
+                      method: "netbanking"
+                    },
+                    {
+                      method: "wallet"
+                    },
+                    {
+                      method: "upi"
+                    }
+                  ]
+                }
+              },
+              sequence: ["block.banks"],
+              preferences: {
+                show_default_blocks: true
+              }
+            }
+          },
+          retry: {
+            enabled: true,
+            max_count: 4
           }
         };
 
-        const razorpay = new window.Razorpay(options);
-        razorpay.open();
+          try {
+            const razorpay = new window.Razorpay(options);
+            razorpay.on('payment.failed', function (response) {
+              toast.error(`Payment failed: ${response.error.description || 'Unknown error'}`);
+              setProcessing(false);
+            });
+            razorpay.open();
+          } catch (error) {
+            console.error('Razorpay initialization error:', error);
+            toast.error('Failed to initialize payment gateway. Please try again.');
+            setProcessing(false);
+          }
+        };
+        
+        checkRazorpay();
       } else {
         toast.success('Order placed successfully!');
         navigate('/orders');
@@ -313,11 +388,27 @@ const Checkout = () => {
             <div className="summary-items">
               {cart?.items.map((item) => (
                 <div key={item._id} className="summary-item">
-                  <div>
+                  <div className="summary-item-image">
+                    {item.product?.images?.[0] ? (
+                      <img 
+                        src={getImageUrl(item.product.images[0])} 
+                        alt={item.product?.name || 'Product'}
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                        }}
+                      />
+                    ) : (
+                      <div className="placeholder-image">No Image</div>
+                    )}
+                  </div>
+                  <div className="summary-item-details">
                     <h4>{item.product?.name}</h4>
                     <p>Qty: {item.quantity} × ₹{item.price}</p>
+                    {item.size && <p>Size: {item.size}</p>}
+                    {item.color && <p>Color: {item.color}</p>}
                   </div>
-                  <span>₹{item.price * item.quantity}</span>
+                  <span className="summary-item-price">₹{item.price * item.quantity}</span>
                 </div>
               ))}
             </div>
