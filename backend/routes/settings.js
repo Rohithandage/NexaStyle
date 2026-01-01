@@ -24,5 +24,16 @@ router.get('/header-image', async (req, res) => {
   }
 });
 
+// Get logo (public route)
+router.get('/logo', async (req, res) => {
+  try {
+    const setting = await Settings.findOne({ key: 'logo' });
+    const logoUrl = setting ? setting.value : null;
+    res.json({ logo: logoUrl });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 module.exports = router;
 

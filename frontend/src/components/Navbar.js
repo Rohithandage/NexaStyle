@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { FiShoppingCart, FiUser, FiChevronDown, FiSearch } from 'react-icons/fi';
 import api from '../api/api';
+import { getImageUrl } from '../utils/config';
 import './Navbar.css';
 
 const Navbar = () => {
@@ -14,9 +15,11 @@ const Navbar = () => {
   const [touchedCategory, setTouchedCategory] = useState(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [logo, setLogo] = useState(null);
 
   useEffect(() => {
     fetchCategories();
+    fetchLogo();
   }, []);
 
   React.useEffect(() => {
@@ -50,6 +53,16 @@ const Navbar = () => {
       setCategories(res.data || []);
     } catch (error) {
       console.error('Error fetching categories:', error);
+    }
+  };
+
+  const fetchLogo = async () => {
+    try {
+      const res = await api.get('/api/settings/logo');
+      setLogo(res.data.logo || null);
+    } catch (error) {
+      // Fail silently if logo can't be fetched
+      console.error('Error fetching logo:', error);
     }
   };
 
@@ -103,9 +116,24 @@ const Navbar = () => {
     <nav className="navbar">
       <div className="navbar-container">
         <Link to="/" className="navbar-logo">
-          <img src="/logo.svg" alt="NexaStyle" className="navbar-logo-img" />
+          {logo ? (
+            <img 
+              src={getImageUrl(logo)} 
+              alt="NexaStyle Logo" 
+              className="navbar-logo-img"
+              onError={(e) => {
+                // Fallback to logo.svg if the uploaded logo fails to load
+                e.target.src = '/logo.svg';
+              }}
+            />
+          ) : (
+            <img 
+              src="/logo.svg" 
+              alt="NexaStyle Logo" 
+              className="navbar-logo-img"
+            />
+          )}
         </Link>
-
         <div className="navbar-menu">
           <Link to="/" className="navbar-link">
             Home

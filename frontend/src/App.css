@@ -15,7 +15,13 @@
 
 @media (max-width: 768px) {
   .main-content {
-    padding-top: 100px; /* More padding for mobile navbar */
+    padding-top: 180px; /* More padding for mobile navbar (icons + menu + auth row) */
+  }
+}
+
+@media (max-width: 480px) {
+  .main-content {
+    padding-top: 170px; /* Adjusted padding for smaller mobile screens */
   }
 }
 

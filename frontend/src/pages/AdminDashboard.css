@@ -963,6 +963,98 @@
   font-size: 0.875rem;
 }
 
+.logo-section {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 2px solid #eee;
+}
+
+.logo-section h3 {
+  margin-bottom: 1rem;
+  color: #333;
+}
+
+.logo-info {
+  background: #e7f3ff;
+  border: 2px solid #2196f3;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.logo-info p {
+  margin: 0.5rem 0;
+  color: #333;
+}
+
+.logo-info ul {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.logo-info li {
+  margin: 0.25rem 0;
+  color: #555;
+}
+
+.current-logo {
+  margin-top: 1rem;
+}
+
+.current-logo p {
+  margin-bottom: 1rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.logo-preview {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  border: 2px solid #667eea;
+}
+
+.logo-preview-img {
+  max-height: 100px;
+  max-width: 300px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.logo-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.remove-logo-btn {
+  padding: 0.5rem 1rem;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.3s;
+}
+
+.remove-logo-btn:hover {
+  background: #c82333;
+}
+
+.no-logo {
+  color: #666;
+  font-style: italic;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  border: 2px dashed #ccc;
+}
+
 .header-image-section {
   margin-bottom: 2rem;
   padding: 1.5rem;
@@ -1134,6 +1226,18 @@
 .copy-url-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+}
+
+.set-logo-btn {
+  background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+  color: white;
+  border: none;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.set-logo-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(253, 160, 133, 0.3);
 }
 
 .add-header-btn {

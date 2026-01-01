@@ -422,6 +422,57 @@ router.get('/settings/header-image', async (req, res) => {
   }
 });
 
+// Logo Management
+// Get logo
+router.get('/settings/logo', async (req, res) => {
+  try {
+    const setting = await Settings.findOne({ key: 'logo' });
+    const logoUrl = setting ? setting.value : null;
+    res.json({ logo: logoUrl });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Set logo
+router.post('/settings/logo', auth, admin, async (req, res) => {
+  try {
+    const { logoUrl } = req.body;
+    if (!logoUrl) {
+      return res.status(400).json({ message: 'Logo URL is required' });
+    }
+    
+    let setting = await Settings.findOne({ key: 'logo' });
+    if (setting) {
+      setting.value = logoUrl;
+      setting.updatedAt = new Date();
+      await setting.save();
+    } else {
+      setting = new Settings({ key: 'logo', value: logoUrl });
+      await setting.save();
+    }
+    
+    res.json({ success: true, logo: logoUrl });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Delete logo
+router.delete('/settings/logo', auth, admin, async (req, res) => {
+  try {
+    const setting = await Settings.findOne({ key: 'logo' });
+    if (setting) {
+      await setting.deleteOne();
+      res.json({ success: true, message: 'Logo removed successfully' });
+    } else {
+      res.json({ success: true, message: 'No logo found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 module.exports = router;
 
 

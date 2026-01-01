@@ -21,6 +21,7 @@ const AdminDashboard = () => {
   const [showProductForm, setShowProductForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [headerImages, setHeaderImages] = useState([]);
+  const [logo, setLogo] = useState(null);
   const [productForm, setProductForm] = useState({
     name: '',
     description: '',
@@ -55,6 +56,7 @@ const AdminDashboard = () => {
     }
     if (activeTab === 'images') {
       fetchHeaderImages();
+      fetchLogo();
     }
   }, [activeTab]);
 
@@ -86,6 +88,56 @@ const AdminDashboard = () => {
       setHeaderImages(res.data.headerImages || []);
     } catch (error) {
       console.error('Error fetching header images:', error);
+    }
+  };
+
+  const fetchLogo = async () => {
+    try {
+      const res = await api.get('/api/admin/settings/logo', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      setLogo(res.data.logo || null);
+    } catch (error) {
+      console.error('Error fetching logo:', error);
+    }
+  };
+
+  const handleSetLogo = async (imageUrl) => {
+    try {
+      await api.post(
+        '/api/admin/settings/logo',
+        { logoUrl: imageUrl },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      toast.success('Logo updated successfully!');
+      fetchLogo();
+    } catch (error) {
+      console.error('Error setting logo:', error);
+      const errorMessage = error.response?.data?.message || 'Error setting logo';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    try {
+      await api.delete('/api/admin/settings/logo', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      toast.success('Logo removed successfully!');
+      setLogo(null);
+    } catch (error) {
+      console.error('Error removing logo:', error);
+      const errorMessage = error.response?.data?.message || 'Error removing logo';
+      toast.error(errorMessage);
     }
   };
 
@@ -1552,6 +1604,38 @@ const AdminDashboard = () => {
               </div>
             </div>
 
+            <div className="logo-section">
+              <h3>Website Logo</h3>
+              <div className="logo-info">
+                <p><strong>📐 Recommended Size:</strong></p>
+                <ul>
+                  <li><strong>Optimal:</strong> 200-300 pixels wide (transparent background recommended)</li>
+                  <li><strong>Format:</strong> PNG (with transparency) or JPG</li>
+                  <li><strong>Max File Size:</strong> 5MB</li>
+                </ul>
+                <p className="size-warning">💡 The logo will appear in the navigation bar. Use a transparent PNG for best results.</p>
+              </div>
+              {logo ? (
+                <div className="current-logo">
+                  <p>Current logo:</p>
+                  <div className="logo-preview">
+                    <img src={getImageUrl(logo)} alt="Current Logo" className="logo-preview-img" />
+                    <div className="logo-actions">
+                      <button
+                        onClick={handleRemoveLogo}
+                        className="remove-logo-btn"
+                        title="Remove logo"
+                      >
+                        × Remove Logo
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="no-logo">No logo set. Select an image below to set as logo.</p>
+              )}
+            </div>
+
             <div className="header-image-section">
               <h3>Home Page Header Carousel</h3>
               <div className="carousel-size-info">
@@ -1608,6 +1692,13 @@ const AdminDashboard = () => {
                           title="Copy image URL"
                         >
                           📋 Copy URL
+                        </button>
+                        <button
+                          onClick={() => handleSetLogo(image.url || image)}
+                          className="set-logo-btn"
+                          title="Set as website logo"
+                        >
+                          🎨 Set as Logo
                         </button>
                         <button
                           onClick={() => handleAddHeaderImage(image.url || image)}
