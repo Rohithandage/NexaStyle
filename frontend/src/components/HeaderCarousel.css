@@ -15,10 +15,17 @@
   width: 100%;
   aspect-ratio: 16 / 9;
   min-height: 220px;   /* mobile safety */
-  max-height: 560px;   /* desktop limit */
   background: #f2f2f2;
   overflow: hidden;
   position: relative;
+}
+
+@media (min-width: 769px) {
+  .hero-wrapper {
+    max-height: 90vh;   /* Allow larger height on desktop, up to 90% of viewport */
+    min-height: 600px;  /* Minimum height for desktop */
+    aspect-ratio: 21 / 9; /* Wider aspect ratio for desktop to show more of the image */
+  }
 }
 
 .hero-image {
@@ -26,6 +33,14 @@
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+@media (min-width: 769px) {
+  .hero-image {
+    object-fit: contain; /* Show full image on desktop without cropping */
+    width: 100%;
+    height: 100%;
+  }
 }
 
 /* Hide static hero when carousel is active */
@@ -42,6 +57,17 @@
   width: 100%;
   height: 100%;
   contain: layout style paint;
+}
+
+@media (min-width: 769px) {
+  .carousel-container {
+    height: 100%; /* Match parent height */
+    max-height: 90vh; /* Match hero-wrapper max-height */
+  }
+  
+  .carousel-slide {
+    height: 100%; /* Match container height */
+  }
 }
 
 .carousel-slide {
@@ -62,6 +88,14 @@
   object-fit: cover;
   object-position: center;
   display: block;
+}
+
+@media (min-width: 769px) {
+  .carousel-image {
+    object-fit: contain; /* Show full image on desktop without cropping */
+    width: 100%;
+    height: 100%;
+  }
 }
 
 .carousel-button {

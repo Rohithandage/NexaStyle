@@ -539,6 +539,14 @@
     margin: 0 1rem;
   }
 
+  .navbar-link {
+    font-size: 1.15rem; /* Bigger categories text on desktop */
+  }
+
+  .category-link-with-dropdown {
+    font-size: 1.15rem; /* Bigger categories with dropdown text on desktop */
+  }
+
   .navbar-search-desktop {
     margin: 0 1rem;
   }
@@ -546,6 +554,22 @@
   .navbar-icons {
     flex-shrink: 0;
     margin-left: 1rem;
+  }
+
+  .navbar-icon {
+    font-size: 2rem; /* Bigger profile and cart icons on desktop */
+  }
+
+  .profile-icon-btn {
+    font-size: 2rem; /* Ensure profile icon button is also bigger */
+  }
+
+  .cart-badge {
+    width: 24px; /* Slightly bigger badge for larger icons */
+    height: 24px;
+    font-size: 0.85rem;
+    top: -10px;
+    right: -10px;
   }
 }
 
