@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
-import { getImageUrl } from '../utils/config';
+import { getOptimizedImageUrl } from '../utils/config';
 import './Orders.css';
 
 const Orders = () => {
@@ -84,7 +84,11 @@ const Orders = () => {
                     <div key={index} className="order-item">
                       <div className="order-item-image">
                         {item.product?.images?.[0] ? (
-                          <img src={getImageUrl(item.product.images[0])} alt={item.product.name} />
+                          <img 
+                            src={getOptimizedImageUrl(item.product.images[0], 300)} 
+                            alt={item.product.name}
+                            loading="lazy"
+                          />
                         ) : (
                           <div className="placeholder-image">No Image</div>
                         )}

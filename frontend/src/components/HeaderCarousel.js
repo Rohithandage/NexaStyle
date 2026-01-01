@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FiChevronLeft, FiChevronRight } from 'react-icons/fi';
-import { getImageUrl } from '../utils/config';
+import { getOptimizedImageUrl } from '../utils/config';
 import './HeaderCarousel.css';
 
 const HeaderCarousel = ({ images }) => {
@@ -47,9 +47,11 @@ const HeaderCarousel = ({ images }) => {
         
         <div className="carousel-slide">
           <img 
-            src={getImageUrl(images[currentIndex])} 
+            src={getOptimizedImageUrl(images[currentIndex], 'hero')} 
             alt={`Header ${currentIndex + 1}`}
             className="carousel-image"
+            loading="eager"
+            fetchPriority="high"
           />
         </div>
 

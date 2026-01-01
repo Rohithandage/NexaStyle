@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
-import { getImageUrl } from '../utils/config';
+import { getOptimizedImageUrl } from '../utils/config';
 import './Checkout.css';
 
 const Checkout = () => {
@@ -442,8 +442,9 @@ const Checkout = () => {
                   <div className="summary-item-image">
                     {item.product?.images?.[0] ? (
                       <img 
-                        src={getImageUrl(item.product.images[0])} 
+                        src={getOptimizedImageUrl(item.product.images[0], 300)} 
                         alt={item.product?.name || 'Product'}
+                        loading="lazy"
                         onError={(e) => {
                           e.target.onerror = null;
                           e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';

@@ -4,7 +4,7 @@ import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
 import Reviews from '../components/Reviews';
-import { getImageUrl } from '../utils/config';
+import { getOptimizedImageUrl } from '../utils/config';
 import './ProductDetail.css';
 
 // Color name to hex mapping
@@ -244,6 +244,7 @@ const ProductDetail = () => {
         <div className="product-images">
           {(() => {
             // Collect all images: general product images + all color-specific images
+            // Keep original image paths (not optimized URLs) for flexibility
             let allImages = [...(product.images || [])];
             
             // Add all color-specific images from all colors
@@ -251,19 +252,14 @@ const ProductDetail = () => {
               product.colors.forEach(colorItem => {
                 if (typeof colorItem === 'object' && colorItem.images && colorItem.images.length > 0) {
                   colorItem.images.forEach(img => {
-                    const imgUrl = getImageUrl(img);
-                    // Check if image already exists (normalize both for comparison)
-                    const normalizedAllImages = allImages.map(existing => getImageUrl(existing));
-                    if (!normalizedAllImages.includes(imgUrl)) {
+                    // Check if image already exists
+                    if (!allImages.includes(img)) {
                       allImages.push(img);
                     }
                   });
                 }
               });
             }
-            
-            // Normalize all image URLs
-            allImages = allImages.map(img => getImageUrl(img));
             
             // When color is selected, prioritize that color's images at the start
             let imagesToShow = [...allImages];
@@ -275,7 +271,7 @@ const ProductDetail = () => {
               
               if (colorObj && typeof colorObj === 'object' && colorObj.images && colorObj.images.length > 0) {
                 // Get color-specific images
-                const colorImages = colorObj.images.map(img => getImageUrl(img));
+                const colorImages = colorObj.images;
                 // Put color images first, then other images
                 const otherImages = allImages.filter(img => !colorImages.includes(img));
                 imagesToShow = [...colorImages, ...otherImages];
@@ -286,8 +282,9 @@ const ProductDetail = () => {
               <>
                 <div className="main-image">
                   <img 
-                    src={imagesToShow[selectedImageIndex] || imagesToShow[0]} 
+                    src={getOptimizedImageUrl(imagesToShow[selectedImageIndex] || imagesToShow[0], 'product-detail')} 
                     alt={`${product.name} - Image ${selectedImageIndex + 1}`}
+                    loading="eager"
                     onError={(e) => {
                       e.target.onerror = null;
                       e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
@@ -303,8 +300,9 @@ const ProductDetail = () => {
                         onClick={() => setSelectedImageIndex(index)}
                       >
                         <img 
-                          src={image} 
+                          src={getOptimizedImageUrl(image, 'thumbnail')} 
                           alt={`${product.name} thumbnail ${index + 1}`}
+                          loading="lazy"
                           onError={(e) => {
                             e.target.onerror = null;
                             e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';

@@ -3,7 +3,7 @@ import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
-import { getImageUrl } from '../utils/config';
+import { getOptimizedImageUrl } from '../utils/config';
 import './Products.css';
 
 // Color name to hex mapping
@@ -289,8 +289,9 @@ const Products = () => {
                         <div className="product-image">
                           {product.images && product.images[0] ? (
                             <img 
-                              src={getImageUrl(product.images[0])} 
+                              src={getOptimizedImageUrl(product.images[0], 'product-list')} 
                               alt={product.name}
+                              loading="lazy"
                               onError={(e) => {
                                 e.target.onerror = null;
                                 e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
