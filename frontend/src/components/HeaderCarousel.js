@@ -5,16 +5,40 @@ import './HeaderCarousel.css';
 
 const HeaderCarousel = ({ images }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [showCarousel, setShowCarousel] = useState(false);
 
+  // Defer carousel loading until after first paint
   useEffect(() => {
     if (images && images.length > 1) {
+      // Use requestIdleCallback if available, otherwise setTimeout
+      const loadCarousel = () => {
+        setShowCarousel(true);
+      };
+
+      if (typeof window !== 'undefined' && window.requestIdleCallback) {
+        const id = window.requestIdleCallback(loadCarousel, { timeout: 2000 });
+        return () => window.cancelIdleCallback(id);
+      } else {
+        // Fallback for browsers without requestIdleCallback
+        const timer = setTimeout(loadCarousel, 100);
+        return () => clearTimeout(timer);
+      }
+    } else {
+      // Single image, no carousel needed
+      setShowCarousel(false);
+    }
+  }, [images]);
+
+  // Carousel auto-advance (only when carousel is shown)
+  useEffect(() => {
+    if (showCarousel && images && images.length > 1) {
       const interval = setInterval(() => {
         setCurrentIndex((prevIndex) => (prevIndex + 1) % images.length);
       }, 5000); // Change image every 5 seconds
 
       return () => clearInterval(interval);
     }
-  }, [images]);
+  }, [showCarousel, images]);
 
   const goToPrevious = () => {
     setCurrentIndex((prevIndex) => 
@@ -36,35 +60,49 @@ const HeaderCarousel = ({ images }) => {
     return null;
   }
 
+  const firstImage = images[0];
+  const hasMultipleImages = images.length > 1;
+
   return (
     <div className="header-carousel">
-      <div className="carousel-container">
-        {images.length > 1 && (
+      {/* STEP 1: Render first image immediately as normal img - NOT in carousel */}
+      {/* Hide when carousel is active (only for multiple images) */}
+      <div className={`hero-wrapper ${showCarousel && hasMultipleImages ? 'hero-hidden' : ''}`}>
+        <img
+          src={getOptimizedImageUrl(firstImage, 'hero')}
+          alt="NexaStyle Hero"
+          className="hero-image"
+          loading="eager"
+          fetchPriority="high"
+          decoding="async"
+          width="1200"
+          height="675"
+        />
+      </div>
+
+      {/* STEP 2: Load carousel AFTER first paint (non-blocking) */}
+      {showCarousel && hasMultipleImages && (
+        <div className="carousel-container">
           <button className="carousel-button carousel-button-left" onClick={goToPrevious}>
             <FiChevronLeft />
           </button>
-        )}
-        
-        <div className="carousel-slide">
-          <img 
-            src={getOptimizedImageUrl(images[currentIndex], 'hero')} 
-            alt={`Header ${currentIndex + 1}`}
-            className="carousel-image"
-            loading="eager"
-            fetchPriority="high"
-            decoding="async"
-            width="1200"
-            height="400"
-          />
-        </div>
+          
+          <div className="carousel-slide">
+            <img 
+              src={getOptimizedImageUrl(images[currentIndex], 'hero')} 
+              alt={`Header ${currentIndex + 1}`}
+              className="carousel-image"
+              loading="lazy"
+              decoding="async"
+              width="1200"
+              height="675"
+            />
+          </div>
 
-        {images.length > 1 && (
           <button className="carousel-button carousel-button-right" onClick={goToNext}>
             <FiChevronRight />
           </button>
-        )}
 
-        {images.length > 1 && (
           <div className="carousel-dots">
             {images.map((_, index) => (
               <button
@@ -75,8 +113,8 @@ const HeaderCarousel = ({ images }) => {
               />
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

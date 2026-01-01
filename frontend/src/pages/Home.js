@@ -228,9 +228,15 @@ const Home = () => {
                           src={getOptimizedImageUrl(product.images[0], 'product-list')} 
                           alt={product.name}
                           loading="lazy"
-                          width="400"
-                          height="250"
                           decoding="async"
+                          width="400"
+                          height="400"
+                          style={{
+                            width: "100%",
+                            aspectRatio: "1 / 1",
+                            objectFit: "cover",
+                            backgroundColor: "#f2f2f2"
+                          }}
                           onError={(e) => {
                             e.target.onerror = null;
                             e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
