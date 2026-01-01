@@ -84,9 +84,112 @@ const Home = () => {
 
   const trackVisitor = async () => {
     try {
-      await api.post('/api/analytics/track-visitor', { page: 'home' });
+      // Try to get country from browser's timezone (more accurate than locale)
+      let clientCountryCode = null;
+      
+      try {
+        // Method 1: Use timezone to infer country (most accurate)
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        console.log('Browser timezone:', timezone);
+        
+        // Timezone to country mapping (common timezones)
+        const timezoneToCountry = {
+          // India
+          'Asia/Kolkata': 'IN', 'Asia/Calcutta': 'IN',
+          // United States
+          'America/New_York': 'US', 'America/Chicago': 'US', 'America/Denver': 'US',
+          'America/Los_Angeles': 'US', 'America/Phoenix': 'US', 'America/Anchorage': 'US',
+          'America/Detroit': 'US', 'America/Indianapolis': 'US', 'America/Louisville': 'US',
+          // Other countries
+          'Europe/London': 'GB', 'Europe/Paris': 'FR', 'Europe/Berlin': 'DE',
+          'Asia/Tokyo': 'JP', 'Asia/Shanghai': 'CN', 'Asia/Dubai': 'AE',
+          'Australia/Sydney': 'AU', 'America/Toronto': 'CA', 'America/Mexico_City': 'MX',
+          'America/Sao_Paulo': 'BR', 'Europe/Moscow': 'RU', 'Asia/Singapore': 'SG',
+          'Asia/Bangkok': 'TH', 'Asia/Jakarta': 'ID', 'Asia/Manila': 'PH',
+          'Asia/Kuala_Lumpur': 'MY', 'Asia/Ho_Chi_Minh': 'VN', 'Asia/Dhaka': 'BD',
+          'Asia/Karachi': 'PK', 'Asia/Colombo': 'LK', 'Asia/Kathmandu': 'NP'
+        };
+        
+        if (timezone && timezoneToCountry[timezone]) {
+          clientCountryCode = timezoneToCountry[timezone];
+          console.log('✅ Country detected from timezone:', clientCountryCode);
+        } else {
+          // Try to extract from timezone string (fallback)
+          if (timezone.includes('Asia/Kolkata') || timezone.includes('Asia/Calcutta')) {
+            clientCountryCode = 'IN';
+          } else if (timezone.startsWith('America/')) {
+            // Most America timezones are US, but could be Canada/Mexico
+            // We'll use locale as additional check
+            const locale = navigator.language || navigator.userLanguage;
+            if (locale && locale.includes('en-CA')) {
+              clientCountryCode = 'CA';
+            } else if (locale && locale.includes('es-MX')) {
+              clientCountryCode = 'MX';
+            } else {
+              clientCountryCode = 'US'; // Default for America timezones
+            }
+          } else if (timezone.startsWith('Europe/')) {
+            // Try to get more specific from locale
+            const locale = navigator.language || navigator.userLanguage;
+            if (locale) {
+              const parts = locale.split('-');
+              if (parts.length > 1) {
+                clientCountryCode = parts[parts.length - 1].toUpperCase();
+              }
+            }
+          } else if (timezone.startsWith('Asia/')) {
+            // For Asia, try locale first, then timezone
+            const locale = navigator.language || navigator.userLanguage;
+            if (locale) {
+              const parts = locale.split('-');
+              if (parts.length > 1) {
+                const code = parts[parts.length - 1].toUpperCase();
+                // Only use if it's an Asian country code
+                const asianCodes = ['IN', 'CN', 'JP', 'KR', 'SG', 'MY', 'TH', 'ID', 'PH', 'VN', 'BD', 'PK', 'LK', 'NP', 'MM', 'KH', 'LA'];
+                if (asianCodes.includes(code)) {
+                  clientCountryCode = code;
+                }
+              }
+            }
+          }
+        }
+        
+        // Method 2: Fallback to locale if timezone method didn't work
+        if (!clientCountryCode) {
+          const locale = navigator.language || navigator.userLanguage;
+          console.log('Browser locale:', locale);
+          if (locale) {
+            const parts = locale.split('-');
+            if (parts.length > 1) {
+              clientCountryCode = parts[parts.length - 1].toUpperCase();
+              console.log('Using country code from locale:', clientCountryCode);
+            }
+          }
+        }
+        
+        console.log('🌍 Final detected client country code:', clientCountryCode);
+      } catch (e) {
+        console.log('Error getting client country:', e);
+      }
+
+      const response = await api.post('/api/analytics/track-visitor', { 
+        page: 'home',
+        clientCountryCode: clientCountryCode || null // Send as hint to backend
+      });
+      console.log('✅ Visitor tracked successfully:', response.data);
+      console.log('Country in response:', response.data?.country, 'Code:', response.data?.countryCode);
+      
+      // If backend returned Unknown/Local and we have client country code, log it
+      if (response.data && (response.data.country === 'Unknown' || response.data.country === 'Local') && clientCountryCode) {
+        console.warn('⚠️ Client country code available:', clientCountryCode, 'but backend returned:', response.data.country);
+      }
     } catch (error) {
-      console.error('Error tracking visitor:', error);
+      console.error('❌ Error tracking visitor:', error.response?.data || error.message);
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response data:', error.response.data);
+      }
+      // Don't show error to user, just log it
     }
   };
 

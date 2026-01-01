@@ -4,6 +4,8 @@ const visitorSchema = new mongoose.Schema({
   ip: String,
   userAgent: String,
   page: String,
+  country: String,
+  countryCode: String,
   timestamp: {
     type: Date,
     default: Date.now

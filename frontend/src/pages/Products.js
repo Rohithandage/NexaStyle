@@ -54,6 +54,7 @@ const Products = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [hasCartItems, setHasCartItems] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   useEffect(() => {
     fetchCategories();
@@ -251,6 +252,73 @@ const Products = () => {
                 ))}
               </div>
             </>
+          )}
+        </div>
+
+        {/* Mobile Category Filter */}
+        <div className="mobile-category-filter">
+          <button 
+            className="mobile-filter-toggle"
+            onClick={() => setShowMobileFilters(!showMobileFilters)}
+          >
+            <span>📂</span> {category || 'All Categories'}
+            <span className="filter-arrow">{showMobileFilters ? '▲' : '▼'}</span>
+          </button>
+          
+          {showMobileFilters && (
+            <div className="mobile-filter-content">
+              <div className="mobile-category-section">
+                <h3>Categories</h3>
+                <div className="mobile-category-list">
+                  <Link 
+                    to="/products" 
+                    className={`mobile-category-item ${!category ? 'active' : ''}`}
+                    onClick={() => setShowMobileFilters(false)}
+                  >
+                    All Products
+                  </Link>
+                  {categories.map((cat) => (
+                    <Link
+                      key={cat._id}
+                      to={`/products/${cat.name}`}
+                      className={`mobile-category-item ${category === cat.name ? 'active' : ''}`}
+                      onClick={() => setShowMobileFilters(false)}
+                    >
+                      {cat.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+
+              {subcategories.length > 0 && (
+                <div className="mobile-subcategory-section">
+                  <h3>Subcategories</h3>
+                  <div className="mobile-subcategory-list">
+                    <button
+                      onClick={() => {
+                        setSelectedSubcategory('');
+                        setShowMobileFilters(false);
+                      }}
+                      className={`mobile-subcategory-item ${!selectedSubcategory ? 'active' : ''}`}
+                    >
+                      All
+                    </button>
+                    {subcategories.map((sub) => (
+                      <button
+                        key={sub._id}
+                        onClick={() => {
+                          setSelectedSubcategory(sub.slug);
+                          setShowMobileFilters(false);
+                        }}
+                        className={`mobile-subcategory-item ${selectedSubcategory === sub.slug ? 'active' : ''}`}
+                      >
+                        {sub.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
 

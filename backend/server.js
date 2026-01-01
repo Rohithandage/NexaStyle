@@ -13,6 +13,9 @@ require('./config/passport');
 
 const app = express();
 
+// Trust proxy to get real IP address
+app.set('trust proxy', true);
+
 // CORS Configuration
 const allowedOrigins = [
   'http://localhost:3000',           // Development frontend

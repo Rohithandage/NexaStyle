@@ -28,12 +28,20 @@ const orderSchema = new mongoose.Schema({
   },
   items: [orderItemSchema],
   shippingAddress: {
+    // New format fields
+    firstName: String,
+    lastName: String,
+    streetAddress: String,
+    state: String,
+    townCity: String,
+    country: String,
+    postcode: String,
+    phone: String,
+    // Old format fields (for backward compatibility)
     name: String,
     address: String,
     city: String,
-    state: String,
-    pincode: String,
-    phone: String
+    pincode: String
   },
   paymentMethod: {
     type: String,

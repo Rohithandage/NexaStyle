@@ -14,6 +14,7 @@ const AdminDashboard = () => {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [colorSearchTerm, setColorSearchTerm] = useState('');
   const [editingSubcategoryColors, setEditingSubcategoryColors] = useState(null); // { categoryId, subcategoryId, colors }
+  const [expandedCategories, setExpandedCategories] = useState({}); // Track which categories are expanded
   const [uploadedImages, setUploadedImages] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [products, setProducts] = useState([]);
@@ -33,6 +34,8 @@ const AdminDashboard = () => {
     getPrintName: '',
     isTrending: false
   });
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [selectedOrderAddress, setSelectedOrderAddress] = useState(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -52,6 +55,17 @@ const AdminDashboard = () => {
     }
     if (activeTab === 'images') {
       fetchHeaderImages();
+    }
+  }, [activeTab]);
+
+  // Auto-refresh dashboard data every 30 seconds when on dashboard tab
+  useEffect(() => {
+    if (activeTab === 'dashboard') {
+      const interval = setInterval(() => {
+        fetchDashboardData();
+      }, 30000); // Refresh every 30 seconds
+
+      return () => clearInterval(interval);
     }
   }, [activeTab]);
   
@@ -214,8 +228,11 @@ const AdminDashboard = () => {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
       });
+      console.log('Dashboard data received:', res.data); // Debug log
+      console.log('Countries count:', res.data.countries?.length || 0);
       setStats(res.data);
     } catch (error) {
+      console.error('Error loading dashboard data:', error);
       toast.error('Error loading dashboard data');
     }
   };
@@ -851,6 +868,19 @@ const AdminDashboard = () => {
     }
   };
 
+  // Helper function to get country flag emoji from country code
+  const getCountryFlag = (countryCode) => {
+    if (!countryCode || countryCode === 'XX' || countryCode === 'LOC') {
+      return '🌍';
+    }
+    // Convert country code to flag emoji
+    const codePoints = countryCode
+      .toUpperCase()
+      .split('')
+      .map(char => 127397 + char.charCodeAt());
+    return String.fromCodePoint(...codePoints);
+  };
+
   return (
     <div className="admin-dashboard">
       <div className="admin-container">
@@ -901,38 +931,87 @@ const AdminDashboard = () => {
         </div>
 
         {activeTab === 'dashboard' && stats && (
-          <div className="dashboard-stats">
-            <div className="stat-card">
-              <h3>Today</h3>
-              <p className="stat-value">{stats.today.visitors}</p>
-              <p className="stat-label">Visitors</p>
-              <p className="stat-value">{stats.today.orders}</p>
-              <p className="stat-label">Orders</p>
-              <p className="stat-value">₹{stats.today.revenue}</p>
-              <p className="stat-label">Revenue</p>
+          <>
+            <div className="analytics-section">
+              <div className="analytics-header">
+                <h2 className="analytics-title">Analytics</h2>
+                <button 
+                  onClick={fetchDashboardData} 
+                  className="refresh-btn"
+                  title="Refresh dashboard data"
+                >
+                  🔄 Refresh
+                </button>
+              </div>
+              <div className="dashboard-stats-scrollable">
+                <div className="stat-card">
+                  <h3>Today</h3>
+                  <p className="stat-value">{stats.today.visitors}</p>
+                  <p className="stat-label">Visitors</p>
+                  <p className="stat-value">{stats.today.orders}</p>
+                  <p className="stat-label">Orders</p>
+                  <p className="stat-value">₹{stats.today.revenue}</p>
+                  <p className="stat-label">Revenue</p>
+                </div>
+                <div className="stat-card">
+                  <h3>Last 7 Days</h3>
+                  <p className="stat-value">{stats.last7Days.orders}</p>
+                  <p className="stat-label">Orders</p>
+                  <p className="stat-value">₹{stats.last7Days.revenue}</p>
+                  <p className="stat-label">Revenue</p>
+                </div>
+                <div className="stat-card">
+                  <h3>Last 30 Days</h3>
+                  <p className="stat-value">{stats.last30Days.orders}</p>
+                  <p className="stat-label">Orders</p>
+                  <p className="stat-value">₹{stats.last30Days.revenue}</p>
+                  <p className="stat-label">Revenue</p>
+                </div>
+                <div className="stat-card">
+                  <h3>All Time</h3>
+                  <p className="stat-value">{stats.allTime.orders}</p>
+                  <p className="stat-label">Orders</p>
+                  <p className="stat-value">₹{stats.allTime.revenue}</p>
+                  <p className="stat-label">Revenue</p>
+                </div>
+              </div>
             </div>
-            <div className="stat-card">
-              <h3>Last 7 Days</h3>
-              <p className="stat-value">{stats.last7Days.orders}</p>
-              <p className="stat-label">Orders</p>
-              <p className="stat-value">₹{stats.last7Days.revenue}</p>
-              <p className="stat-label">Revenue</p>
+
+            <div className="countries-section">
+              <h2 className="countries-title">Visitors by Country</h2>
+              {stats.countries && stats.countries.length > 0 ? (
+                <div className="countries-container">
+                  <div className="countries-list">
+                    {stats.countries.map((country, index) => (
+                      <div key={index} className="country-item">
+                        <div className="country-info">
+                          <span className="country-flag">{getCountryFlag(country.countryCode)}</span>
+                          <div className="country-details">
+                            <span className="country-name">{country.country}</span>
+                            <span className="country-code">{country.countryCode}</span>
+                          </div>
+                        </div>
+                        <div className="country-visitors">
+                          <span className="visitor-count">{country.count}</span>
+                          <span className="visitor-label">visitors</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="no-countries-message">
+                  <p>🌍 No country data available yet.</p>
+                  <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#94a3b8' }}>
+                    Country information will appear as new visitors access the site. 
+                    {stats.today.visitors > 0 && (
+                      <span> You have {stats.today.visitors} visitors today - new visitors will be tracked with country data.</span>
+                    )}
+                  </p>
+                </div>
+              )}
             </div>
-            <div className="stat-card">
-              <h3>Last 30 Days</h3>
-              <p className="stat-value">{stats.last30Days.orders}</p>
-              <p className="stat-label">Orders</p>
-              <p className="stat-value">₹{stats.last30Days.revenue}</p>
-              <p className="stat-label">Revenue</p>
-            </div>
-            <div className="stat-card">
-              <h3>All Time</h3>
-              <p className="stat-value">{stats.allTime.orders}</p>
-              <p className="stat-label">Orders</p>
-              <p className="stat-value">₹{stats.allTime.revenue}</p>
-              <p className="stat-label">Revenue</p>
-            </div>
-          </div>
+          </>
         )}
 
         {activeTab === 'categories' && (
@@ -1092,11 +1171,25 @@ const AdminDashboard = () => {
             )}
 
             <div className="categories-list">
-              {categories.map((category) => (
-                <div key={category._id} className="category-card">
-                  <h3>{category.name}</h3>
-                  <div className="subcategories-list">
-                    {category.subcategories.map((sub) => (
+              {categories.map((category) => {
+                const isExpanded = expandedCategories[category._id] || false;
+                return (
+                  <div key={category._id} className="category-card">
+                    <div 
+                      className="category-header"
+                      onClick={() => setExpandedCategories(prev => ({
+                        ...prev,
+                        [category._id]: !prev[category._id]
+                      }))}
+                    >
+                      <h3>{category.name}</h3>
+                      <span className="category-toggle-icon">
+                        {isExpanded ? '▼' : '▶'}
+                      </span>
+                    </div>
+                    {isExpanded && (
+                      <div className="subcategories-list">
+                        {category.subcategories.map((sub) => (
                       <div key={sub._id} className="subcategory-item">
                         <div className="subcategory-name-input">
                           <input
@@ -1172,11 +1265,13 @@ const AdminDashboard = () => {
                         >
                           Delete
                         </button>
+                        </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -1191,44 +1286,215 @@ const AdminDashboard = () => {
                     <th>Order ID</th>
                     <th>Customer</th>
                     <th>Amount</th>
+                    <th>Product Name</th>
+                    <th>GetPrint Name</th>
+                    <th>Address</th>
                     <th>Payment Status</th>
                     <th>Order Status</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {orders.map((order) => (
-                    <tr key={order._id}>
-                      <td>#{order._id.slice(-8)}</td>
-                      <td>{order.user?.name || 'N/A'}</td>
-                      <td>₹{order.totalAmount}</td>
-                      <td>{order.paymentStatus}</td>
-                      <td>
-                        <select
-                          value={order.orderStatus}
-                          onChange={(e) =>
-                            handleUpdateOrderStatus(order._id, e.target.value)
-                          }
-                        >
-                          <option value="pending">Pending</option>
-                          <option value="processing">Processing</option>
-                          <option value="shipped">Shipped</option>
-                          <option value="delivered">Delivered</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
-                      </td>
-                      <td>
-                        <button
-                          onClick={() => handleUpdateOrderStatus(order._id, order.orderStatus)}
-                        >
-                          Update
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {orders.map((order) => {
+                    // Extract product names from order items
+                    const productNames = order.items
+                      ?.map(item => {
+                        // Use item.name (stored when order created) or product.name if populated
+                        if (item.name) {
+                          return item.name;
+                        }
+                        const product = item.product;
+                        if (product && typeof product === 'object' && product.name) {
+                          return product.name;
+                        }
+                        return null;
+                      })
+                      .filter(name => name !== null) || [];
+                    
+                    // Get unique product names
+                    const uniqueProductNames = [...new Set(productNames)];
+                    
+                    // Extract getPrintNames from order items
+                    const getPrintNames = order.items
+                      ?.map(item => {
+                        // Handle both populated and non-populated product references
+                        const product = item.product;
+                        if (product && typeof product === 'object' && product.getPrintName) {
+                          return product.getPrintName;
+                        }
+                        return null;
+                      })
+                      .filter(name => name !== null) || [];
+                    
+                    // Get unique getPrintNames
+                    const uniqueGetPrintNames = [...new Set(getPrintNames)];
+                    
+                    const handleOpenAddress = () => {
+                      setSelectedOrderAddress(order.shippingAddress);
+                      setShowAddressModal(true);
+                    };
+                    
+                    return (
+                      <tr key={order._id}>
+                        <td>#{order._id.slice(-8)}</td>
+                        <td>{order.user?.name || 'N/A'}</td>
+                        <td>₹{order.totalAmount}</td>
+                        <td>
+                          {uniqueProductNames.length > 0 
+                            ? uniqueProductNames.join(', ') 
+                            : 'N/A'}
+                        </td>
+                        <td>
+                          {uniqueGetPrintNames.length > 0 
+                            ? uniqueGetPrintNames.join(', ') 
+                            : 'N/A'}
+                        </td>
+                        <td>
+                          {order.shippingAddress ? (
+                            <button 
+                              onClick={handleOpenAddress}
+                              className="view-address-btn"
+                            >
+                              Open
+                            </button>
+                          ) : (
+                            'N/A'
+                          )}
+                        </td>
+                        <td>{order.paymentStatus}</td>
+                        <td>
+                          <select
+                            value={order.orderStatus}
+                            onChange={(e) =>
+                              handleUpdateOrderStatus(order._id, e.target.value)
+                            }
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="processing">Processing</option>
+                            <option value="shipped">Shipped</option>
+                            <option value="delivered">Delivered</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        </td>
+                        <td>
+                          <button
+                            onClick={() => handleUpdateOrderStatus(order._id, order.orderStatus)}
+                          >
+                            Update
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
+            
+            {/* Address Modal */}
+            {showAddressModal && (
+              <div className="address-modal-overlay" onClick={() => setShowAddressModal(false)}>
+                <div className="address-modal-content" onClick={(e) => e.stopPropagation()}>
+                  <div className="address-modal-header">
+                    <h3>Shipping Address</h3>
+                    <button 
+                      className="address-modal-close"
+                      onClick={() => setShowAddressModal(false)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="address-modal-body">
+                    {selectedOrderAddress ? (
+                      (() => {
+                        const addr = selectedOrderAddress;
+                        const hasNewFormat = addr.firstName !== undefined || addr.lastName !== undefined || addr.streetAddress !== undefined || addr.townCity !== undefined || addr.postcode !== undefined;
+                        
+                        if (hasNewFormat) {
+                          // New format
+                          return (
+                            <div className="address-details">
+                              <div className="address-field">
+                                <label>First Name:</label>
+                                <span>{addr.firstName || 'N/A'}</span>
+                              </div>
+                              <div className="address-field">
+                                <label>Last Name:</label>
+                                <span>{addr.lastName || 'N/A'}</span>
+                              </div>
+                              <div className="address-field">
+                                <label>Street Address:</label>
+                                <span>{addr.streetAddress || 'N/A'}</span>
+                              </div>
+                              <div className="address-field">
+                                <label>State:</label>
+                                <span>{addr.state || 'N/A'}</span>
+                              </div>
+                              <div className="address-field">
+                                <label>Town/City:</label>
+                                <span>{addr.townCity || 'N/A'}</span>
+                              </div>
+                              <div className="address-field">
+                                <label>Country:</label>
+                                <span>{addr.country || (addr.state ? 'India' : 'N/A')}</span>
+                              </div>
+                              <div className="address-field">
+                                <label>Postcode/Zip:</label>
+                                <span>{addr.postcode || 'N/A'}</span>
+                              </div>
+                              <div className="address-field">
+                                <label>Phone:</label>
+                                <span>{addr.phone || 'N/A'}</span>
+                              </div>
+                            </div>
+                          );
+                        } else {
+                          // Old format
+                          const nameParts = addr.name ? addr.name.trim().split(' ') : [];
+                          return (
+                            <div className="address-details">
+                              <div className="address-field">
+                                <label>First Name:</label>
+                                <span>{nameParts.length > 0 ? nameParts[0] : 'N/A'}</span>
+                              </div>
+                              <div className="address-field">
+                                <label>Last Name:</label>
+                                <span>{nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'N/A'}</span>
+                              </div>
+                              <div className="address-field">
+                                <label>Street Address:</label>
+                                <span>{addr.address || 'N/A'}</span>
+                              </div>
+                              <div className="address-field">
+                                <label>State:</label>
+                                <span>{addr.state || 'N/A'}</span>
+                              </div>
+                              <div className="address-field">
+                                <label>Town/City:</label>
+                                <span>{addr.city || 'N/A'}</span>
+                              </div>
+                              <div className="address-field">
+                                <label>Country:</label>
+                                <span>{addr.country || (addr.state ? 'India' : 'N/A')}</span>
+                              </div>
+                              <div className="address-field">
+                                <label>Postcode/Zip:</label>
+                                <span>{addr.pincode || 'N/A'}</span>
+                              </div>
+                              <div className="address-field">
+                                <label>Phone:</label>
+                                <span>{addr.phone || 'N/A'}</span>
+                              </div>
+                            </div>
+                          );
+                        }
+                      })()
+                    ) : (
+                      <p>No address available</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

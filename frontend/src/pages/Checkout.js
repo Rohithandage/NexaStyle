@@ -96,7 +96,8 @@ const Checkout = () => {
     phone: '',
     state: '',
     townCity: '',
-    postcode: ''
+    postcode: '',
+    country: 'India'
   });
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
@@ -364,6 +365,7 @@ const Checkout = () => {
                     name="firstName"
                     value={shippingAddress.firstName}
                     onChange={handleInputChange}
+                    placeholder="Enter your first name"
                     required
                   />
                 </div>
@@ -374,6 +376,7 @@ const Checkout = () => {
                     name="lastName"
                     value={shippingAddress.lastName}
                     onChange={handleInputChange}
+                    placeholder="Enter your last name"
                     required
                   />
                 </div>
@@ -384,6 +387,7 @@ const Checkout = () => {
                   name="streetAddress"
                   value={shippingAddress.streetAddress}
                   onChange={handleInputChange}
+                  placeholder="Enter your complete street address"
                   required
                   rows="3"
                 />
@@ -443,9 +447,28 @@ const Checkout = () => {
                     name="townCity"
                     value={shippingAddress.townCity}
                     onChange={handleInputChange}
+                    placeholder="Enter your city"
                     required
                   />
                 </div>
+              </div>
+              <div className="form-group">
+                <label>Country *</label>
+                <select
+                  name="country"
+                  value={shippingAddress.country}
+                  onChange={handleInputChange}
+                  required
+                >
+                  <option value="India">India</option>
+                  <option value="United States">United States</option>
+                  <option value="United Kingdom">United Kingdom</option>
+                  <option value="Canada">Canada</option>
+                  <option value="Australia">Australia</option>
+                  <option value="Germany">Germany</option>
+                  <option value="France">France</option>
+                  <option value="Other">Other</option>
+                </select>
               </div>
               <div className="form-group">
                 <label>Postcode / ZIP *</label>
@@ -454,6 +477,7 @@ const Checkout = () => {
                   name="postcode"
                   value={shippingAddress.postcode}
                   onChange={handleInputChange}
+                  placeholder="Enter postal code"
                   required
                 />
               </div>
@@ -464,6 +488,7 @@ const Checkout = () => {
                   name="phone"
                   value={shippingAddress.phone}
                   onChange={handleInputChange}
+                  placeholder="Enter your phone number"
                   required
                 />
               </div>
