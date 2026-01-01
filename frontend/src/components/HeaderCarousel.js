@@ -52,6 +52,9 @@ const HeaderCarousel = ({ images }) => {
             className="carousel-image"
             loading="eager"
             fetchPriority="high"
+            decoding="async"
+            width="1200"
+            height="400"
           />
         </div>
 
