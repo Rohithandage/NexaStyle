@@ -110,6 +110,23 @@
   margin-bottom: 0.25rem;
 }
 
+.order-item-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-transform: capitalize;
+}
+
+.order-color-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #ddd;
+  display: inline-block;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
 .order-item-total {
   font-weight: bold;
   color: #333;

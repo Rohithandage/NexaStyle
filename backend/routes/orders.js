@@ -26,6 +26,7 @@ router.post('/create', auth, async (req, res) => {
       quantity: item.quantity,
       size: item.size,
       color: item.color,
+      selectedImage: item.selectedImage,
       price: item.price
     }));
 

@@ -54,16 +54,39 @@ router.post('/add', auth, async (req, res) => {
       }
     }
 
+    // Get color-specific image if color is selected
+    let selectedImage = null;
+    if (color && product.colors && product.colors.length > 0) {
+      const colorObj = product.colors.find(c => {
+        const colorName = typeof c === 'string' ? c : c.color;
+        return colorName === color;
+      });
+      
+      if (colorObj && typeof colorObj === 'object' && colorObj.images && colorObj.images.length > 0) {
+        selectedImage = colorObj.images[0];
+      }
+    }
+    
+    // Fall back to first product image if no color-specific image found
+    if (!selectedImage && product.images && product.images.length > 0) {
+      selectedImage = product.images[0];
+    }
+
     if (existingItemIndex > -1) {
       cart.items[existingItemIndex].quantity += quantity;
       // Update price in case it changed
       cart.items[existingItemIndex].price = itemPrice;
+      // Update selected image in case it changed
+      if (selectedImage) {
+        cart.items[existingItemIndex].selectedImage = selectedImage;
+      }
     } else {
       cart.items.push({
         product: productId,
         quantity,
         size,
         color,
+        selectedImage,
         price: itemPrice
       });
     }

@@ -13,6 +13,7 @@ const orderItemSchema = new mongoose.Schema({
   },
   size: String,
   color: String,
+  selectedImage: String,
   price: {
     type: Number,
     required: true

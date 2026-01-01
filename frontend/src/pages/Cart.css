@@ -101,6 +101,26 @@
   color: #495057;
 }
 
+.cart-item-color {
+  font-weight: 600;
+  color: #495057;
+  text-transform: capitalize;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cart-color-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #ddd;
+  display: inline-block;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+
 .cart-item-price {
   color: #28a745;
   font-weight: 600;
