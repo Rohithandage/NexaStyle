@@ -16,7 +16,8 @@ const app = express();
 // CORS Configuration
 const allowedOrigins = [
   'http://localhost:3000',           // Development frontend
-  'https://nexastyle.onrender.com'   // Production frontend
+  'https://nexastyle.onrender.com',   // Production frontend (Render)
+  'https://nexastyle.netlify.app'    // Production frontend (Netlify)
 ];
 
 const corsOptions = {
