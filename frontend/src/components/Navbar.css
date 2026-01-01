@@ -96,6 +96,10 @@
   transition: transform 0.3s ease;
 }
 
+.chevron-down-icon.rotated {
+  transform: rotate(180deg);
+}
+
 .navbar-link {
   display: inline-flex;
   align-items: center;

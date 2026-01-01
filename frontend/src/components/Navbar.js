@@ -166,7 +166,7 @@ const Navbar = () => {
                 {hasSubcategories ? (
                   <span className="navbar-link category-link-with-dropdown">
                     {category.name}
-                    <FiChevronDown className="chevron-down-icon" />
+                    <FiChevronDown className={`chevron-down-icon ${isActive ? 'rotated' : ''}`} />
                   </span>
                 ) : (
                   <Link

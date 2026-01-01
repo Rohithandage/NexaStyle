@@ -2736,8 +2736,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 10001;
   animation: fadeIn 0.3s ease;
+  padding: 1rem;
+  box-sizing: border-box;
 }
 
 @keyframes fadeIn {
@@ -2754,10 +2756,13 @@
   border-radius: 16px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   max-width: 600px;
-  width: 90%;
+  width: 100%;
   max-height: 90vh;
   overflow-y: auto;
   animation: slideUp 0.3s ease;
+  position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 @keyframes slideUp {
@@ -2779,6 +2784,10 @@
   border-bottom: 2px solid #e2e8f0;
   background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
   border-radius: 16px 16px 0 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-shrink: 0;
 }
 
 .address-modal-header h3 {
@@ -2789,28 +2798,36 @@
 }
 
 .address-modal-close {
-  background: none;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
   border: none;
-  font-size: 2rem;
-  color: #64748b;
+  font-size: 1.75rem;
+  color: white;
   cursor: pointer;
   padding: 0;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
   transition: all 0.3s ease;
+  flex-shrink: 0;
+  box-shadow: 0 2px 4px rgba(245, 87, 108, 0.25);
+  line-height: 1;
+  font-weight: bold;
 }
 
 .address-modal-close:hover {
-  background: #e2e8f0;
-  color: #1a202c;
+  background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);
+  color: white;
+  transform: scale(1.1) rotate(90deg);
+  box-shadow: 0 4px 8px rgba(245, 87, 108, 0.35);
 }
 
 .address-modal-body {
   padding: 2rem;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .address-details {
@@ -2845,21 +2862,44 @@
 
 /* Responsive */
 @media (max-width: 768px) {
+  .address-modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
   .address-modal-content {
-    width: 95%;
-    max-height: 85vh;
+    width: 100%;
+    max-width: 100%;
+    max-height: 90vh;
+    border-radius: 20px 20px 0 0;
+    margin: 0;
   }
 
   .address-modal-header {
-    padding: 1rem 1.5rem;
+    padding: 1.25rem 1.5rem;
+    position: sticky;
+    top: 0;
+    z-index: 10;
   }
 
   .address-modal-header h3 {
     font-size: 1.25rem;
+    flex: 1;
+    margin-right: 0.5rem;
+  }
+
+  .address-modal-close {
+    width: 40px;
+    height: 40px;
+    font-size: 1.5rem;
+    position: relative;
+    z-index: 11;
   }
 
   .address-modal-body {
     padding: 1.5rem;
+    max-height: calc(90vh - 80px);
+    overflow-y: auto;
   }
 
   .address-field {
@@ -2873,6 +2913,45 @@
   .address-field span {
     font-size: 0.9rem;
     padding: 0.625rem 0.875rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .address-modal-overlay {
+    padding: 0;
+  }
+
+  .address-modal-content {
+    max-height: 95vh;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .address-modal-header {
+    padding: 1rem 1.25rem;
+  }
+
+  .address-modal-header h3 {
+    font-size: 1.125rem;
+  }
+
+  .address-modal-close {
+    width: 36px;
+    height: 36px;
+    font-size: 1.25rem;
+  }
+
+  .address-modal-body {
+    padding: 1.25rem;
+    max-height: calc(95vh - 70px);
+  }
+
+  .address-field label {
+    font-size: 0.7rem;
+  }
+
+  .address-field span {
+    font-size: 0.85rem;
+    padding: 0.5rem 0.75rem;
   }
 }
 

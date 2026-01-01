@@ -30,11 +30,14 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return; // Prevent duplicate submissions
     setLoading(true);
     const result = await login(formData.email, formData.password);
     if (result.success) {
       toast.success('Login successful!');
-      navigate('/');
+      setTimeout(() => {
+        navigate('/');
+      }, 100);
     } else {
       toast.error(result.message);
     }
