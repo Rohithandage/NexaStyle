@@ -14,6 +14,8 @@
 .hero-wrapper {
   width: 100%;
   aspect-ratio: 16 / 9;
+  min-height: 220px;   /* mobile safety */
+  max-height: 560px;   /* desktop limit */
   background: #f2f2f2;
   overflow: hidden;
   position: relative;
@@ -126,6 +128,10 @@
 }
 
 @media (max-width: 768px) {
+  .header-carousel {
+    margin-top: 100px; /* Account for fixed navbar on mobile */
+  }
+
   .hero-wrapper {
     aspect-ratio: 16 / 9;
   }
@@ -142,6 +148,12 @@
 
   .carousel-button-right {
     right: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header-carousel {
+    margin-top: 90px; /* Slightly less margin for smaller screens */
   }
 }
 

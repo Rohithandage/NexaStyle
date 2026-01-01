@@ -615,6 +615,38 @@
   color: #333;
 }
 
+.carousel-size-info {
+  background: #fff3cd;
+  border: 2px solid #ffc107;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.carousel-size-info p {
+  margin: 0 0 0.5rem 0;
+  color: #856404;
+  font-weight: 600;
+}
+
+.carousel-size-info ul {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+  color: #856404;
+}
+
+.carousel-size-info li {
+  margin: 0.25rem 0;
+  line-height: 1.5;
+}
+
+.size-warning {
+  margin-top: 0.75rem !important;
+  color: #dc3545 !important;
+  font-weight: 600 !important;
+  font-size: 0.9rem;
+}
+
 .current-header-images p {
   margin-bottom: 1rem;
   color: #666;

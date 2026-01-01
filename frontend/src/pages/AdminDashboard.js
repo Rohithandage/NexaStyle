@@ -75,11 +75,97 @@ const AdminDashboard = () => {
     }
   };
 
+  // Validate carousel image dimensions (16:9 aspect ratio, ideally 1920x1080)
+  const validateCarouselImage = (imageUrl) => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      
+      // Try with CORS first, fallback without if needed
+      img.crossOrigin = 'anonymous';
+      
+      img.onload = () => {
+        const width = img.naturalWidth;
+        const height = img.naturalHeight;
+        
+        // If dimensions are 0, image might not have loaded properly
+        if (width === 0 || height === 0) {
+          reject({ message: 'Could not determine image dimensions. Please ensure the image is accessible.' });
+          return;
+        }
+        
+        const aspectRatio = width / height;
+        const targetAspectRatio = 16 / 9; // 1.777...
+        const aspectRatioTolerance = 0.05; // Allow 5% tolerance (1.69 to 1.87)
+        
+        // Check aspect ratio (must be close to 16:9)
+        if (Math.abs(aspectRatio - targetAspectRatio) > aspectRatioTolerance) {
+          const currentRatio = `${Math.round(width / aspectRatio)}:${Math.round(height / aspectRatio)}`;
+          reject({
+            message: `❌ Image aspect ratio must be 16:9. Current: ${width}×${height}px (${currentRatio})`,
+            width,
+            height,
+            aspectRatio
+          });
+          return;
+        }
+        
+        // Check minimum size (should be at least 1200x675)
+        if (width < 1200 || height < 675) {
+          reject({
+            message: `❌ Image too small. Minimum: 1200×675px. Current: ${width}×${height}px`,
+            width,
+            height
+          });
+          return;
+        }
+        
+        // Warn if not optimal size (1920x1080 recommended)
+        if (width !== 1920 || height !== 1080) {
+          toast.warning(`ℹ️ Recommended size: 1920×1080px. Current: ${width}×${height}px`, {
+            autoClose: 5000
+          });
+        } else {
+          toast.success(`✅ Perfect size! 1920×1080px (16:9)`, {
+            autoClose: 3000
+          });
+        }
+        
+        resolve({ width, height, aspectRatio });
+      };
+      
+      img.onerror = (error) => {
+        // If CORS fails, try without CORS
+        if (img.crossOrigin === 'anonymous') {
+          const img2 = new Image();
+          img2.onload = img.onload;
+          img2.onerror = () => {
+            reject({ message: 'Failed to load image for validation. Please check the image URL is accessible.' });
+          };
+          img2.src = imageUrl;
+        } else {
+          reject({ message: 'Failed to load image for validation. Please check the image URL is accessible.' });
+        }
+      };
+      
+      img.src = imageUrl;
+    });
+  };
+
   const handleAddHeaderImage = async (imageUrl) => {
     try {
+      const fullImageUrl = getImageUrl(imageUrl);
+      
+      // Validate image dimensions before adding
+      try {
+        await validateCarouselImage(fullImageUrl);
+      } catch (validationError) {
+        toast.error(validationError.message || 'Image validation failed');
+        return;
+      }
+      
       await api.post(
         '/api/admin/settings/header-images',
-        { imageUrl: getImageUrl(imageUrl) },
+        { imageUrl: fullImageUrl },
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem('token')}`
@@ -89,6 +175,10 @@ const AdminDashboard = () => {
       toast.success('Image added to header carousel!');
       fetchHeaderImages();
     } catch (error) {
+      if (error.message && error.message.includes('aspect ratio') || error.message && error.message.includes('too small')) {
+        // Validation error already shown
+        return;
+      }
       toast.error('Error adding header image');
     }
   };
@@ -1198,6 +1288,16 @@ const AdminDashboard = () => {
 
             <div className="header-image-section">
               <h3>Home Page Header Carousel</h3>
+              <div className="carousel-size-info">
+                <p><strong>📐 Required Image Size:</strong></p>
+                <ul>
+                  <li><strong>Optimal:</strong> 1920 × 1080 pixels (16:9 aspect ratio)</li>
+                  <li><strong>Minimum:</strong> 1200 × 675 pixels (16:9 aspect ratio)</li>
+                  <li><strong>Format:</strong> JPG or PNG</li>
+                  <li><strong>Max File Size:</strong> 5MB per image</li>
+                </ul>
+                <p className="size-warning">⚠️ Images that don't match 16:9 aspect ratio will be rejected</p>
+              </div>
               {headerImages.length > 0 ? (
                 <div className="current-header-images">
                   <p>Current header images ({headerImages.length}):</p>

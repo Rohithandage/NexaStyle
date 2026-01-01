@@ -69,7 +69,13 @@ const HeaderCarousel = ({ images }) => {
       {/* Hide when carousel is active (only for multiple images) */}
       <div className={`hero-wrapper ${showCarousel && hasMultipleImages ? 'hero-hidden' : ''}`}>
         <img
-          src={getOptimizedImageUrl(firstImage, 'hero')}
+          src={getOptimizedImageUrl(firstImage, 1200)}
+          srcSet={`
+            ${getOptimizedImageUrl(firstImage, 768)} 768w,
+            ${getOptimizedImageUrl(firstImage, 1024)} 1024w,
+            ${getOptimizedImageUrl(firstImage, 1200)} 1200w
+          `}
+          sizes="(max-width: 768px) 100vw, (max-width: 1024px) 100vw, 1200px"
           alt="NexaStyle Hero"
           className="hero-image"
           loading="eager"
@@ -89,7 +95,13 @@ const HeaderCarousel = ({ images }) => {
           
           <div className="carousel-slide">
             <img 
-              src={getOptimizedImageUrl(images[currentIndex], 'hero')} 
+              src={getOptimizedImageUrl(images[currentIndex], 1200)} 
+              srcSet={`
+                ${getOptimizedImageUrl(images[currentIndex], 768)} 768w,
+                ${getOptimizedImageUrl(images[currentIndex], 1024)} 1024w,
+                ${getOptimizedImageUrl(images[currentIndex], 1200)} 1200w
+              `}
+              sizes="(max-width: 768px) 100vw, (max-width: 1024px) 100vw, 1200px"
               alt={`Header ${currentIndex + 1}`}
               className="carousel-image"
               loading="lazy"

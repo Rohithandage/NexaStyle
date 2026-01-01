@@ -10,6 +10,13 @@
 .main-content {
   flex: 1;
   width: 100%;
+  padding-top: 80px; /* Account for fixed navbar */
+}
+
+@media (max-width: 768px) {
+  .main-content {
+    padding-top: 100px; /* More padding for mobile navbar */
+  }
 }
 
 body {
