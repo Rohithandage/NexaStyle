@@ -37,6 +37,9 @@ const AdminDashboard = () => {
   });
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [selectedOrderAddress, setSelectedOrderAddress] = useState(null);
+  const [notes, setNotes] = useState('');
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [originalNotes, setOriginalNotes] = useState('');
 
   useEffect(() => {
     fetchDashboardData();
@@ -57,6 +60,9 @@ const AdminDashboard = () => {
     if (activeTab === 'images') {
       fetchHeaderImages();
       fetchLogo();
+    }
+    if (activeTab === 'notes') {
+      fetchNotes();
     }
   }, [activeTab]);
 
@@ -933,6 +939,59 @@ const AdminDashboard = () => {
     return String.fromCodePoint(...codePoints);
   };
 
+  // Notes Management
+  const fetchNotes = async () => {
+    try {
+      const res = await api.get('/api/admin/settings/notes', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      // Ensure notes is always a string
+      const notesValue = (res.data.notes !== null && res.data.notes !== undefined) ? String(res.data.notes) : '';
+      setNotes(notesValue);
+      setOriginalNotes(notesValue);
+      setIsEditingNotes(false);
+    } catch (error) {
+      console.error('Error fetching notes:', error);
+      toast.error('Error loading notes');
+    }
+  };
+
+  const saveNotes = async () => {
+    try {
+      // Ensure notes is always a string, even if empty
+      const notesToSave = notes !== null && notes !== undefined ? String(notes) : '';
+      
+      await api.post(
+        '/api/admin/settings/notes',
+        { notes: notesToSave },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        }
+      );
+      setOriginalNotes(notesToSave);
+      setNotes(notesToSave);
+      setIsEditingNotes(false);
+      toast.success('Notes saved successfully!');
+    } catch (error) {
+      console.error('Error saving notes:', error);
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Error saving notes';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleEditNotes = () => {
+    setIsEditingNotes(true);
+  };
+
+  const handleCancelNotes = () => {
+    setNotes(originalNotes);
+    setIsEditingNotes(false);
+  };
+
   return (
     <div className="admin-dashboard">
       <div className="admin-container">
@@ -979,6 +1038,12 @@ const AdminDashboard = () => {
             className={activeTab === 'trending' ? 'active' : ''}
           >
             Trending
+          </button>
+          <button
+            onClick={() => setActiveTab('notes')}
+            className={activeTab === 'notes' ? 'active' : ''}
+          >
+            Notes
           </button>
         </div>
 
@@ -1879,7 +1944,12 @@ const AdminDashboard = () => {
                               <option value="M">M</option>
                               <option value="L">L</option>
                               <option value="XL">XL</option>
-                              <option value="XXL">XXL</option>
+                              <option value="2XL">2XL</option>
+                              <option value="3XL">3XL</option>
+                              <option value="4XL">4XL</option>
+                              <option value="5XL">5XL</option>
+                              <option value="6XL">6XL</option>
+                              <option value="7XL">7XL</option>
                             </select>
                             <input
                               type="number"
@@ -2282,6 +2352,61 @@ const AdminDashboard = () => {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'notes' && (
+          <div className="notes-management">
+            <h2>Notes</h2>
+            <p className="notes-description">
+              Write and save your notes here. Use this space for reminders, ideas, or any information you want to keep track of.
+            </p>
+            
+            <div className="notes-section">
+              <div className="notes-header">
+                <h3>My Notes</h3>
+                <div className="notes-actions">
+                  {!isEditingNotes ? (
+                    <button
+                      onClick={handleEditNotes}
+                      className="edit-notes-btn"
+                    >
+                      ✏️ Edit
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={saveNotes}
+                        className="save-notes-btn"
+                      >
+                        💾 Save
+                      </button>
+                      <button
+                        onClick={handleCancelNotes}
+                        className="cancel-notes-btn"
+                      >
+                        ❌ Cancel
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+              
+              <textarea
+                className="notes-textarea"
+                value={notes || ''}
+                onChange={(e) => setNotes(e.target.value || '')}
+                disabled={!isEditingNotes}
+                placeholder="Write your notes here..."
+                rows={20}
+              />
+              
+              {notes && !isEditingNotes && (
+                <div className="notes-info">
+                  <p>Last saved: {originalNotes === notes ? 'Just now' : 'Unsaved changes'}</p>
                 </div>
               )}
             </div>

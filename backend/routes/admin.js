@@ -473,6 +473,42 @@ router.delete('/settings/logo', auth, admin, async (req, res) => {
   }
 });
 
+// Notes Management
+// Get notes
+router.get('/settings/notes', auth, admin, async (req, res) => {
+  try {
+    const setting = await Settings.findOne({ key: 'admin_notes' });
+    const notes = setting ? setting.value : '';
+    res.json({ notes });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Save notes
+router.post('/settings/notes', auth, admin, async (req, res) => {
+  try {
+    const { notes } = req.body;
+    // Ensure notes is always a string, even if empty, null, or undefined
+    const notesValue = (notes !== null && notes !== undefined) ? String(notes) : '';
+    
+    let setting = await Settings.findOne({ key: 'admin_notes' });
+    if (setting) {
+      setting.value = notesValue;
+      setting.updatedAt = new Date();
+      await setting.save();
+    } else {
+      setting = new Settings({ key: 'admin_notes', value: notesValue });
+      await setting.save();
+    }
+    
+    res.json({ success: true, notes: notesValue });
+  } catch (error) {
+    console.error('Error saving notes:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 module.exports = router;
 
 
