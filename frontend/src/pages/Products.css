@@ -407,6 +407,68 @@
 }
 
 .loading,
+.search-suggestion-banner {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  color: #856404;
+}
+
+.search-suggestion-banner p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.search-suggestion-banner .suggested-link {
+  color: #007bff;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.search-suggestion-banner .suggested-link:hover {
+  color: #0056b3;
+}
+
+.search-fallback-banner {
+  background: #e7f3ff;
+  border: 1px solid #007bff;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  color: #004085;
+}
+
+.search-fallback-banner p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.search-suggestion {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.search-suggestion p {
+  margin: 0;
+  color: #666;
+}
+
+.search-suggestion .suggested-link {
+  color: #007bff;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.search-suggestion .suggested-link:hover {
+  color: #0056b3;
+}
+
 .no-products {
   text-align: center;
   padding: 4rem;

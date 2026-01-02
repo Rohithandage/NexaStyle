@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { FiShoppingCart, FiUser, FiChevronDown, FiSearch } from 'react-icons/fi';
 import api from '../api/api';
@@ -9,6 +9,8 @@ import './Navbar.css';
 const Navbar = () => {
   const { user, logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [cartCount, setCartCount] = useState(0);
   const [categories, setCategories] = useState([]);
   const [hoveredCategory, setHoveredCategory] = useState(null);
@@ -21,6 +23,17 @@ const Navbar = () => {
     fetchCategories();
     fetchLogo();
   }, []);
+
+  // Sync search input with URL search parameter
+  useEffect(() => {
+    const urlSearchQuery = searchParams.get('search');
+    if (urlSearchQuery && location.pathname === '/products') {
+      setSearchQuery(urlSearchQuery);
+    } else if (location.pathname !== '/products' || !urlSearchQuery) {
+      // Clear search input when not on products page or when search param is removed
+      setSearchQuery('');
+    }
+  }, [searchParams, location.pathname]);
 
   React.useEffect(() => {
     if (isAuthenticated) {
@@ -89,9 +102,13 @@ const Navbar = () => {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
-      setSearchQuery('');
+    const trimmedQuery = searchQuery.trim();
+    if (trimmedQuery) {
+      // Navigate to base products page with search query, clearing any category filters
+      navigate(`/products?search=${encodeURIComponent(trimmedQuery)}`);
+    } else {
+      // If search is empty, navigate to products page without search param
+      navigate('/products');
     }
   };
 

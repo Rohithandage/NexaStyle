@@ -53,8 +53,10 @@ const Products = () => {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalProducts, setTotalProducts] = useState(0);
   const [hasCartItems, setHasCartItems] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [searchMetadata, setSearchMetadata] = useState(null);
 
   useEffect(() => {
     fetchCategories();
@@ -74,15 +76,20 @@ const Products = () => {
   }, [isAuthenticated]);
 
   useEffect(() => {
+    const searchQuery = searchParams.get('search');
     const subcategoryFromUrl = searchParams.get('subcategory');
-    if (subcategoryFromUrl) {
+    
+    // If there's a search query, clear subcategory selection
+    if (searchQuery && searchQuery.trim()) {
+      setSelectedSubcategory('');
+    } else if (subcategoryFromUrl) {
       setSelectedSubcategory(subcategoryFromUrl);
     } else {
       setSelectedSubcategory('');
     }
-    // Reset to page 1 when subcategory changes
+    // Reset to page 1 when subcategory or search changes
     setPage(1);
-    // Clear products when subcategory changes to prevent showing stale data
+    // Clear products when subcategory or search changes to prevent showing stale data
     setProducts([]);
   }, [searchParams, category]);
 
@@ -103,23 +110,43 @@ const Products = () => {
     setLoading(true);
     try {
       const params = { page, limit: 12 };
-      if (category) params.category = category;
       
-      // Always use URL parameter as source of truth for subcategory
-      const subcategoryFromUrl = searchParams.get('subcategory');
-      if (subcategoryFromUrl && subcategoryFromUrl.trim()) {
-        params.subcategory = subcategoryFromUrl.trim();
-      } else if (selectedSubcategory && selectedSubcategory.trim()) {
-        // Fallback to state if URL doesn't have it
-        params.subcategory = selectedSubcategory.trim();
-      }
-      
+      // Get search query first
       const searchQuery = searchParams.get('search');
-      if (searchQuery) params.search = searchQuery;
+      
+      // If there's a search query, don't filter by category/subcategory
+      // Search should work across all products
+      if (searchQuery && searchQuery.trim()) {
+        params.search = searchQuery.trim();
+      } else {
+        // Only apply category/subcategory filters when not searching
+        if (category) params.category = category;
+        
+        // Always use URL parameter as source of truth for subcategory
+        const subcategoryFromUrl = searchParams.get('subcategory');
+        if (subcategoryFromUrl && subcategoryFromUrl.trim()) {
+          params.subcategory = subcategoryFromUrl.trim();
+        } else if (selectedSubcategory && selectedSubcategory.trim()) {
+          // Fallback to state if URL doesn't have it
+          params.subcategory = selectedSubcategory.trim();
+        }
+      }
 
       const res = await api.get('/api/products', { params });
       setProducts(res.data.products || []);
       setTotalPages(res.data.totalPages || 1);
+      setTotalProducts(res.data.total || 0);
+      
+      // Store search metadata for display
+      if (res.data.suggestedQuery || res.data.isFallback !== undefined) {
+        setSearchMetadata({
+          suggestedQuery: res.data.suggestedQuery,
+          hasExactMatches: res.data.hasExactMatches,
+          isFallback: res.data.isFallback
+        });
+      } else {
+        setSearchMetadata(null);
+      }
     } catch (error) {
       console.error('Error fetching products:', error);
     } finally {
@@ -356,7 +383,14 @@ const Products = () => {
         <div className="products-content">
           <h1>
             {searchParams.get('search') ? (
-              <>Search Results for "{searchParams.get('search')}"</>
+              <>
+                Search Results for "{searchParams.get('search')}"
+                {!loading && (
+                  <span className="search-results-count">
+                    {' '}({totalProducts} {totalProducts === 1 ? 'product' : 'products'} found)
+                  </span>
+                )}
+              </>
             ) : (
               <>
                 {category || 'All Products'}
@@ -372,9 +406,26 @@ const Products = () => {
           {loading ? (
             <div className="loading">Loading products...</div>
           ) : products.length === 0 ? (
-            <div className="no-products">No products found</div>
+            <div className="no-products">
+              <p>No products found for "{searchParams.get('search')}"</p>
+              {searchMetadata?.suggestedQuery && (
+                <div className="search-suggestion">
+                  <p>Did you mean: <Link to={`/products?search=${encodeURIComponent(searchMetadata.suggestedQuery)}`} className="suggested-link">{searchMetadata.suggestedQuery}</Link>?</p>
+                </div>
+              )}
+            </div>
           ) : (
             <>
+              {searchMetadata?.suggestedQuery && searchMetadata.hasExactMatches === false && (
+                <div className="search-suggestion-banner">
+                  <p>Did you mean: <Link to={`/products?search=${encodeURIComponent(searchMetadata.suggestedQuery)}`} className="suggested-link">{searchMetadata.suggestedQuery}</Link>?</p>
+                </div>
+              )}
+              {searchMetadata?.isFallback && (
+                <div className="search-fallback-banner">
+                  <p>Showing popular products related to your search</p>
+                </div>
+              )}
               <div className="products-grid">
                 {products.map((product) => {
                   const discountPercent = product.discountPrice 
