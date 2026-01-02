@@ -121,6 +121,10 @@ const Navbar = () => {
               src={getImageUrl(logo)} 
               alt="NexaStyle Logo" 
               className="navbar-logo-img"
+              width="200"
+              height="60"
+              loading="eager"
+              decoding="async"
               onError={(e) => {
                 // Fallback to logo.svg if the uploaded logo fails to load
                 e.target.src = '/logo.svg';
@@ -131,6 +135,10 @@ const Navbar = () => {
               src="/logo.svg" 
               alt="NexaStyle Logo" 
               className="navbar-logo-img"
+              width="200"
+              height="60"
+              loading="eager"
+              decoding="async"
             />
           )}
         </Link>
@@ -325,7 +333,10 @@ const Navbar = () => {
               </form>
               <Link to="/cart" className="navbar-icon">
                 <FiShoppingCart />
-                {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
+                {/* Always reserve space for badge to prevent CLS */}
+                <span className={`cart-badge ${cartCount > 0 ? 'visible' : 'hidden'}`}>
+                  {cartCount > 0 ? cartCount : ''}
+                </span>
               </Link>
             </>
           ) : (

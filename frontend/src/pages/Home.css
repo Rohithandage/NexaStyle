@@ -15,6 +15,15 @@
   max-width: 1200px;
   margin: 4rem auto;
   padding: 0 2rem;
+  /* Reserve minimum height to prevent CLS when products load */
+  min-height: 300px;
+}
+
+@media (max-width: 768px) {
+  .trending-section,
+  .featured-section {
+    min-height: 200px;
+  }
 }
 
 .trending-section h2,
@@ -33,6 +42,7 @@
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  grid-column: 1 / -1;
 }
 
 .more-products-btn {
@@ -57,6 +67,15 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 2rem;
+  /* Reserve space to prevent CLS when products load */
+  min-height: 400px;
+  contain: layout style;
+}
+
+@media (max-width: 768px) {
+  .products-grid {
+    min-height: 300px;
+  }
 }
 
 .product-card {
@@ -70,6 +89,9 @@
   height: 100%;
   margin: 0;
   padding: 0;
+  /* Reserve minimum height to prevent CLS */
+  min-height: 450px;
+  contain: layout style;
 }
 
 .product-card:hover {
@@ -153,6 +175,8 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  /* Reserve minimum height to prevent CLS when content loads */
+  min-height: 120px;
 }
 
 .product-brand {
@@ -173,6 +197,8 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Reserve consistent height to prevent CLS - use min-height only */
+  min-height: 2.4em;
 }
 
 .product-description {
@@ -245,6 +271,8 @@
   flex-wrap: nowrap;
   width: 100%;
   overflow: hidden;
+  /* Reserve consistent height to prevent CLS - use min-height only */
+  min-height: 1.5em;
 }
 
 .current-price {
@@ -369,6 +397,18 @@
 }
 
 @media (max-width: 768px) {
+  .product-card {
+    min-height: 380px;
+  }
+
+  .product-name {
+    min-height: 2.2em;
+  }
+
+  .product-info {
+    min-height: 100px;
+  }
+
   .trending-section,
   .featured-section {
     padding: 1.5rem 0.75rem;
@@ -506,6 +546,18 @@
 }
 
 @media (max-width: 480px) {
+  .product-card {
+    min-height: 350px;
+  }
+
+  .product-name {
+    min-height: 2em;
+  }
+
+  .product-info {
+    min-height: 90px;
+  }
+
   .trending-section,
   .featured-section {
     padding: 1rem 0.5rem;
@@ -651,6 +703,8 @@
   z-index: 1000;
   animation: slideUp 0.3s ease-out;
   display: block;
+  /* Fixed elements don't affect layout, but ensure smooth appearance */
+  will-change: transform, opacity;
 }
 
 @keyframes slideUp {

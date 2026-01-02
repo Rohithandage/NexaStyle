@@ -6,10 +6,16 @@ import './HeaderCarousel.css';
 const HeaderCarousel = ({ images }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showCarousel, setShowCarousel] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Mark component as mounted immediately to reserve space
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Defer carousel loading until after first paint
   useEffect(() => {
-    if (images && images.length > 1) {
+    if (images && images.length > 1 && isMounted) {
       // Use requestIdleCallback if available, otherwise setTimeout
       const loadCarousel = () => {
         setShowCarousel(true);
@@ -27,7 +33,7 @@ const HeaderCarousel = ({ images }) => {
       // Single image, no carousel needed
       setShowCarousel(false);
     }
-  }, [images]);
+  }, [images, isMounted]);
 
   // Carousel auto-advance (only when carousel is shown)
   useEffect(() => {
@@ -56,8 +62,16 @@ const HeaderCarousel = ({ images }) => {
     setCurrentIndex(index);
   };
 
+  // Always render container to reserve space, even when no images
+  // This prevents layout shift when images load
   if (!images || images.length === 0) {
-    return null;
+    return (
+      <div className="header-carousel">
+        <div className="hero-wrapper">
+          {/* Reserve space with placeholder */}
+        </div>
+      </div>
+    );
   }
 
   const firstImage = images[0];

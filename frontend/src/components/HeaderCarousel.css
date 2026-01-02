@@ -18,6 +18,8 @@
   background: #f2f2f2;
   overflow: hidden;
   position: relative;
+  /* Prevent layout shift - always reserve space */
+  contain: layout style paint;
 }
 
 @media (min-width: 769px) {
@@ -33,6 +35,8 @@
   height: 100%;
   object-fit: cover;
   display: block;
+  /* Prevent layout shift during image load */
+  background-color: #f2f2f2;
 }
 
 @media (min-width: 769px) {
@@ -47,6 +51,15 @@
 .hero-hidden {
   opacity: 0;
   pointer-events: none;
+  /* Keep in layout to prevent CLS */
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  /* Ensure no layout shift during transition */
+  will-change: opacity;
+  transition: opacity 0.3s ease;
 }
 
 /* STEP 2: Carousel container - loads after first paint */
@@ -57,6 +70,8 @@
   width: 100%;
   height: 100%;
   contain: layout style paint;
+  /* Reserve space immediately to prevent CLS */
+  display: block;
 }
 
 @media (min-width: 769px) {
@@ -106,6 +121,8 @@
   border: none;
   width: 50px;
   height: 50px;
+  min-width: 50px;
+  min-height: 50px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -115,6 +132,7 @@
   transition: all 0.3s;
   font-size: 1.5rem;
   color: #333;
+  box-sizing: border-box;
 }
 
 .carousel-button:hover {
@@ -138,6 +156,9 @@
   display: flex;
   gap: 10px;
   z-index: 10;
+  /* Reserve space to prevent CLS */
+  min-height: 12px;
+  padding: 4px 0;
 }
 
 .carousel-dot {

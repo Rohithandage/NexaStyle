@@ -15,6 +15,8 @@ body {
   padding: 0;
   overflow-x: hidden;
   width: 100%;
+  /* Prevent font loading shifts */
+  font-display: swap;
 }
 
 code {

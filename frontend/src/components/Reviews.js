@@ -137,7 +137,20 @@ const Reviews = ({ productId }) => {
                       <div className="review-header">
                         <div className="reviewer-info">
                           {review.user?.avatar ? (
-                            <img src={review.user.avatar} alt={review.user.name} />
+                            <img 
+                              src={review.user.avatar} 
+                              alt={review.user.name}
+                              width="40"
+                              height="40"
+                              style={{
+                                width: "40px",
+                                height: "40px",
+                                borderRadius: "50%",
+                                objectFit: "cover"
+                              }}
+                              loading="lazy"
+                              decoding="async"
+                            />
                           ) : (
                             <div className="avatar-placeholder">
                               {review.user?.name?.charAt(0).toUpperCase()}

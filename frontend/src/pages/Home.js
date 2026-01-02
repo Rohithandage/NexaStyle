@@ -305,17 +305,16 @@ const Home = () => {
 
   return (
     <div className="home-page-wrapper">
-      {headerImages.length > 0 && (
-        <HeaderCarousel images={headerImages} />
-      )}
+      {/* Always render carousel container to reserve space, even when loading */}
+      <HeaderCarousel images={headerImages} />
       <div className="home">
         <section className="trending-section">
         <h2>Now Trending</h2>
+        <div className="products-grid">
         {trendingProducts.length === 0 ? (
-          <p className="no-products-message">No trending products at the moment</p>
+            <p className="no-products-message">No trending products at the moment</p>
         ) : (
           <>
-            <div className="products-grid">
               {(showAllTrending ? trendingProducts : trendingProducts.slice(0, 4)).map((product) => {
               const discountPercent = product.discountPrice 
                 ? Math.round(((product.price - product.discountPrice) / product.price) * 100) 
@@ -398,9 +397,8 @@ const Home = () => {
                 </div>
               );
               })}
-            </div>
             {trendingProducts.length > 4 && !showAllTrending && (
-              <div style={{ textAlign: 'center', marginTop: '2rem' }}>
+              <div style={{ textAlign: 'center', marginTop: '2rem', gridColumn: '1 / -1' }}>
                 <button
                   onClick={() => setShowAllTrending(true)}
                   className="more-products-btn"
@@ -411,12 +409,17 @@ const Home = () => {
             )}
           </>
         )}
+        </div>
       </section>
 
       <section className="featured-section">
         <h2>Featured Products</h2>
         <div className="products-grid">
-          {(showAllFeatured ? featuredProducts : featuredProducts.slice(0, 4)).map((product) => {
+        {featuredProducts.length === 0 ? (
+            <p className="no-products-message">No featured products at the moment</p>
+        ) : (
+          <>
+              {(showAllFeatured ? featuredProducts : featuredProducts.slice(0, 4)).map((product) => {
             const discountPercent = product.discountPrice 
               ? Math.round(((product.price - product.discountPrice) / product.price) * 100) 
               : 0;
@@ -431,6 +434,15 @@ const Home = () => {
                         src={getOptimizedImageUrl(product.images[0], 'product-list')} 
                         alt={product.name}
                         loading="lazy"
+                        decoding="async"
+                        width="400"
+                        height="400"
+                        style={{
+                          width: "100%",
+                          aspectRatio: "1 / 1",
+                          objectFit: "cover",
+                          backgroundColor: "#f2f2f2"
+                        }}
                         onError={(e) => {
                           e.target.onerror = null;
                           e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
@@ -489,17 +501,19 @@ const Home = () => {
               </div>
             );
           })}
-        </div>
-        {featuredProducts.length > 4 && !showAllFeatured && (
-          <div style={{ textAlign: 'center', marginTop: '2rem' }}>
-            <button
-              onClick={() => setShowAllFeatured(true)}
-              className="more-products-btn"
-            >
-              More
-            </button>
-          </div>
+            {featuredProducts.length > 4 && !showAllFeatured && (
+              <div style={{ textAlign: 'center', marginTop: '2rem', gridColumn: '1 / -1' }}>
+                <button
+                  onClick={() => setShowAllFeatured(true)}
+                  className="more-products-btn"
+                >
+                  More
+                </button>
+              </div>
+            )}
+          </>
         )}
+        </div>
       </section>
       </div>
       {hasCartItems && (

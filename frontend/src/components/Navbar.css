@@ -22,6 +22,8 @@
   max-height: 80px;
   box-sizing: border-box;
   width: 100%;
+  /* Prevent layout shift when content loads */
+  contain: layout style;
 }
 
 .navbar-logo {
@@ -38,6 +40,10 @@
   object-fit: contain;
   max-height: 60px;
   max-width: 200px;
+  display: block;
+  /* Reserve space to prevent CLS */
+  min-width: 120px;
+  min-height: 60px;
 }
 
 .navbar-logo h2 {
@@ -54,6 +60,13 @@
   flex: 1;
   justify-content: center;
   margin: 0 auto;
+  /* Reserve minimum height to prevent CLS when categories load */
+  min-height: 40px;
+  /* Reserve width to prevent horizontal shifts */
+  min-width: 300px;
+  contain: layout style;
+  /* Prevent layout shift when categories populate */
+  visibility: visible;
 }
 
 .navbar-link {
@@ -279,11 +292,27 @@
   border-radius: 50%;
   width: 20px;
   height: 20px;
+  min-width: 20px;
+  min-height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.75rem;
   font-weight: bold;
+  box-sizing: border-box;
+  /* Always reserve space to prevent CLS */
+  visibility: visible;
+}
+
+.cart-badge.hidden {
+  opacity: 0;
+  pointer-events: none;
+  /* Keep space reserved */
+  visibility: visible;
+}
+
+.cart-badge.visible {
+  opacity: 1;
 }
 
 .navbar-button {
@@ -575,6 +604,10 @@
 
 /* Mobile styles */
 @media (max-width: 768px) {
+  .navbar-menu {
+    min-width: 200px;
+  }
+
   .navbar {
     margin-bottom: 1rem;
   }
