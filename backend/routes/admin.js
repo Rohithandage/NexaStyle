@@ -4,6 +4,7 @@ const Category = require('../models/Category');
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const Settings = require('../models/Settings');
+const Offer = require('../models/Offer');
 const { auth, admin } = require('../middleware/auth');
 const cloudinary = require('cloudinary').v2;
 
@@ -539,6 +540,255 @@ router.post('/settings/notes', auth, admin, async (req, res) => {
     res.json({ success: true, notes: notesValue });
   } catch (error) {
     console.error('Error saving notes:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get COD charges
+router.get('/settings/cod-charges', auth, admin, async (req, res) => {
+  try {
+    const setting = await Settings.findOne({ key: 'cod_charges' });
+    const charges = setting ? parseFloat(setting.value) || 0 : 0;
+    res.json({ success: true, codCharges: charges });
+  } catch (error) {
+    console.error('Error fetching COD charges:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Set COD charges
+router.post('/settings/cod-charges', auth, admin, async (req, res) => {
+  try {
+    const { codCharges } = req.body;
+    const chargesValue = parseFloat(codCharges) || 0;
+    
+    if (chargesValue < 0) {
+      return res.status(400).json({ message: 'COD charges cannot be negative' });
+    }
+    
+    let setting = await Settings.findOne({ key: 'cod_charges' });
+    if (setting) {
+      setting.value = chargesValue.toString();
+      setting.updatedAt = new Date();
+      await setting.save();
+    } else {
+      setting = new Settings({ key: 'cod_charges', value: chargesValue.toString() });
+      await setting.save();
+    }
+    
+    res.json({ success: true, codCharges: chargesValue });
+  } catch (error) {
+    console.error('Error saving COD charges:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Offer Management
+// Get all offers
+router.get('/offers', async (req, res) => {
+  try {
+    const offers = await Offer.find()
+      .populate('products')
+      .sort({ createdAt: -1 });
+    res.json(offers);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Create offer
+router.post('/offers', async (req, res) => {
+  try {
+    const { 
+      code, 
+      offerType, 
+      discount, 
+      discountType, 
+      description,
+      couponDisplayText,
+      isActive, 
+      showOnHomePage,
+      // Bundle offer fields
+      category,
+      subcategories,
+      products,
+      bundlePrice,
+      bundleQuantity,
+      bundleDisplayText
+    } = req.body;
+    
+    if (!code) {
+      return res.status(400).json({ message: 'Code is required' });
+    }
+    
+    const offerTypeValue = offerType || 'coupon';
+    
+    // Validate coupon offer
+    if (offerTypeValue === 'coupon') {
+      if (discount === undefined) {
+        return res.status(400).json({ message: 'Discount is required for coupon offers' });
+      }
+      if (discountType === 'percentage' && (discount < 0 || discount > 100)) {
+        return res.status(400).json({ message: 'Percentage discount must be between 0 and 100' });
+      }
+      if (discountType === 'fixed' && discount < 0) {
+        return res.status(400).json({ message: 'Fixed discount cannot be negative' });
+      }
+    }
+    
+      // Validate bundle offer
+      if (offerTypeValue === 'bundle') {
+        if (!subcategories || subcategories.length === 0) {
+          return res.status(400).json({ message: 'At least one subcategory is required for bundle offers' });
+        }
+        const quantity = parseInt(bundleQuantity);
+        if (!bundleQuantity || isNaN(quantity) || quantity < 1) {
+          return res.status(400).json({ message: 'Bundle quantity is required and must be at least 1' });
+        }
+        const price = parseFloat(bundlePrice);
+        if (!bundlePrice || isNaN(price) || price < 0) {
+          return res.status(400).json({ message: 'Valid bundle price is required' });
+        }
+        if (!products || !Array.isArray(products) || products.length === 0) {
+          return res.status(400).json({ message: 'At least one product is required for bundle offers' });
+        }
+        if (quantity > products.length) {
+          return res.status(400).json({ message: `Bundle quantity (${quantity}) cannot be greater than available products (${products.length})` });
+        }
+      }
+    
+    const offerData = {
+      code: code.toUpperCase().trim(),
+      offerType: offerTypeValue,
+      description: description || '',
+      isActive: isActive !== undefined ? isActive : true,
+      showOnHomePage: showOnHomePage !== undefined ? showOnHomePage : (offerTypeValue === 'coupon')
+    };
+    
+    if (offerTypeValue === 'coupon') {
+      offerData.discount = discount;
+      offerData.discountType = discountType || 'percentage';
+    } else if (offerTypeValue === 'bundle') {
+      offerData.category = category;
+      offerData.subcategories = subcategories || [];
+      offerData.products = products;
+      offerData.bundlePrice = parseFloat(bundlePrice);
+      offerData.bundleQuantity = parseInt(bundleQuantity);
+      offerData.bundleDisplayText = bundleDisplayText || '';
+    }
+    
+    const offer = new Offer(offerData);
+    await offer.save();
+    
+    // Populate products for response
+    if (offerTypeValue === 'bundle') {
+      await offer.populate('products');
+    }
+    
+    res.status(201).json(offer);
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'Offer code already exists' });
+    }
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Update offer
+router.put('/offers/:id', async (req, res) => {
+  try {
+    const { 
+      code, 
+      offerType,
+      discount, 
+      discountType, 
+      description,
+      couponDisplayText,
+      isActive,
+      showOnHomePage,
+      // Bundle offer fields
+      category,
+      subcategories,
+      products,
+      bundlePrice,
+      bundleQuantity,
+      bundleDisplayText
+    } = req.body;
+    
+    const updateData = { updatedAt: new Date() };
+    
+    if (code) updateData.code = code.toUpperCase().trim();
+    if (offerType) updateData.offerType = offerType;
+    if (description !== undefined) updateData.description = description;
+    if (isActive !== undefined) updateData.isActive = isActive;
+    if (showOnHomePage !== undefined) updateData.showOnHomePage = showOnHomePage;
+    
+    // Handle coupon fields
+    if (discount !== undefined) {
+      if (discountType === 'percentage' && (discount < 0 || discount > 100)) {
+        return res.status(400).json({ message: 'Percentage discount must be between 0 and 100' });
+      }
+      if (discountType === 'fixed' && discount < 0) {
+        return res.status(400).json({ message: 'Fixed discount cannot be negative' });
+      }
+      updateData.discount = discount;
+    }
+    if (discountType) updateData.discountType = discountType;
+    if (couponDisplayText !== undefined) {
+      updateData.couponDisplayText = couponDisplayText.trim();
+    }
+    
+    // Handle bundle fields
+    if (category) updateData.category = category;
+    if (subcategories !== undefined) updateData.subcategories = subcategories;
+    if (products !== undefined) updateData.products = products;
+    if (bundlePrice !== undefined) {
+      const price = parseFloat(bundlePrice);
+      if (isNaN(price) || price < 0) {
+        return res.status(400).json({ message: 'Bundle price cannot be negative' });
+      }
+      updateData.bundlePrice = price;
+    }
+    if (bundleQuantity !== undefined) {
+      const quantity = parseInt(bundleQuantity);
+      if (isNaN(quantity) || quantity < 1) {
+        return res.status(400).json({ message: 'Bundle quantity must be at least 1' });
+      }
+      updateData.bundleQuantity = quantity;
+    }
+    if (bundleDisplayText !== undefined) {
+      updateData.bundleDisplayText = bundleDisplayText.trim();
+    }
+    
+    const offer = await Offer.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    
+    if (!offer) {
+      return res.status(404).json({ message: 'Offer not found' });
+    }
+    
+    // Populate products for response if bundle
+    if (offer.offerType === 'bundle' && offer.products && offer.products.length > 0) {
+      await offer.populate('products');
+    }
+    
+    res.json(offer);
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'Offer code already exists' });
+    }
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Delete offer
+router.delete('/offers/:id', async (req, res) => {
+  try {
+    const offer = await Offer.findByIdAndDelete(req.params.id);
+    if (!offer) {
+      return res.status(404).json({ message: 'Offer not found' });
+    }
+    res.json({ message: 'Offer deleted successfully' });
+  } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

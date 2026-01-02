@@ -13,15 +13,28 @@
   padding-top: 80px; /* Account for fixed navbar */
 }
 
+/* Adjust main content padding when offer banner is visible */
+body.has-offer-banner .main-content {
+  padding-top: calc(var(--offer-banner-height, 60px) + 80px); /* Account for offer banner + navbar (80px) */
+}
+
 @media (max-width: 768px) {
   .main-content {
     padding-top: 180px; /* More padding for mobile navbar (icons + menu + auth row) */
+  }
+  
+  body.has-offer-banner .main-content {
+    padding-top: calc(var(--offer-banner-height, 50px) + 180px); /* Account for offer banner + mobile navbar (180px) */
   }
 }
 
 @media (max-width: 480px) {
   .main-content {
     padding-top: 170px; /* Adjusted padding for smaller mobile screens */
+  }
+  
+  body.has-offer-banner .main-content {
+    padding-top: calc(var(--offer-banner-height, 45px) + 170px); /* Account for offer banner + mobile navbar (170px) */
   }
 }
 

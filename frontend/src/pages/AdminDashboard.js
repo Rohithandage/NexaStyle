@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import api from '../api/api';
 import { toast } from 'react-toastify';
 import { getImageUrl, getBackendUrl } from '../utils/config';
@@ -40,10 +40,36 @@ const AdminDashboard = () => {
   const [notes, setNotes] = useState('');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [originalNotes, setOriginalNotes] = useState('');
+  const [codCharges, setCodCharges] = useState(0);
+  const [isEditingCodCharges, setIsEditingCodCharges] = useState(false);
+  const [originalCodCharges, setOriginalCodCharges] = useState(0);
   const [allProducts, setAllProducts] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedSubcategory, setSelectedSubcategory] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [offers, setOffers] = useState([]);
+  const [showOfferForm, setShowOfferForm] = useState(false);
+  const [editingOffer, setEditingOffer] = useState(null);
+  const [offerForm, setOfferForm] = useState({
+    code: '',
+    offerType: 'coupon',
+    discount: '',
+    discountType: 'percentage',
+    description: '',
+    couponDisplayText: '',
+    isActive: true,
+    showOnHomePage: true,
+    // Bundle offer fields
+    category: '',
+    subcategories: [],
+    products: [],
+    bundlePrice: '',
+    bundleQuantity: '',
+    bundleDisplayText: ''
+  });
+  const [selectedCategoryForOffer, setSelectedCategoryForOffer] = useState('');
+  const [selectedSubcategoriesForOffer, setSelectedSubcategoriesForOffer] = useState([]);
+  const [selectedProductsForOffer, setSelectedProductsForOffer] = useState([]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -68,7 +94,15 @@ const AdminDashboard = () => {
     if (activeTab === 'notes') {
       fetchNotes();
     }
+    if (activeTab === 'cod') {
+      fetchCodCharges();
+    }
     if (activeTab === 'allProducts') {
+      fetchAllProducts();
+      fetchCategories();
+    }
+    if (activeTab === 'offers') {
+      fetchOffers();
       fetchAllProducts();
       fetchCategories();
     }
@@ -84,6 +118,38 @@ const AdminDashboard = () => {
       return () => clearInterval(interval);
     }
   }, [activeTab]);
+
+  // Fetch products and categories when offer form is opened
+  useEffect(() => {
+    if (showOfferForm && offerForm.offerType === 'bundle') {
+      if (allProducts.length === 0) {
+        fetchAllProducts();
+      }
+      if (categories.length === 0) {
+        fetchCategories();
+      }
+    }
+  }, [showOfferForm, offerForm.offerType]);
+
+  // Auto-select products when subcategories change or products are loaded
+  useEffect(() => {
+    if (showOfferForm && offerForm.offerType === 'bundle' && selectedSubcategoriesForOffer.length > 0 && allProducts.length > 0) {
+      // Filter products from any category that match the selected subcategories
+      const productsFromSubcategories = allProducts.filter(p => {
+        return selectedSubcategoriesForOffer.includes(p.subcategory);
+      });
+      const productIds = productsFromSubcategories.map(p => p._id);
+      // Only update if the selection has changed (avoid infinite loop)
+      const currentIds = selectedProductsForOffer.map(id => id.toString()).sort();
+      const newIds = productIds.map(id => id.toString()).sort();
+      if (JSON.stringify(currentIds) !== JSON.stringify(newIds)) {
+        setSelectedProductsForOffer(productIds);
+      }
+    } else if (showOfferForm && offerForm.offerType === 'bundle' && selectedSubcategoriesForOffer.length === 0) {
+      // Clear products if no subcategories selected
+      setSelectedProductsForOffer([]);
+    }
+  }, [selectedSubcategoriesForOffer, allProducts.length]);
   
   // Refresh categories when product form opens
   useEffect(() => {
@@ -1013,6 +1079,306 @@ const AdminDashboard = () => {
     setIsEditingNotes(false);
   };
 
+  // COD Charges Management
+  const fetchCodCharges = async () => {
+    try {
+      const res = await api.get('/api/admin/settings/cod-charges', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const charges = parseFloat(res.data.codCharges) || 0;
+      setCodCharges(charges);
+      setOriginalCodCharges(charges);
+      setIsEditingCodCharges(false);
+    } catch (error) {
+      console.error('Error fetching COD charges:', error);
+      toast.error('Error loading COD charges');
+    }
+  };
+
+  const saveCodCharges = async () => {
+    try {
+      const chargesToSave = parseFloat(codCharges) || 0;
+      
+      if (chargesToSave < 0) {
+        toast.error('COD charges cannot be negative');
+        return;
+      }
+      
+      await api.post(
+        '/api/admin/settings/cod-charges',
+        { codCharges: chargesToSave },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        }
+      );
+      setOriginalCodCharges(chargesToSave);
+      setCodCharges(chargesToSave);
+      setIsEditingCodCharges(false);
+      toast.success('COD charges saved successfully!');
+    } catch (error) {
+      console.error('Error saving COD charges:', error);
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Error saving COD charges';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleEditCodCharges = () => {
+    setIsEditingCodCharges(true);
+  };
+
+  const handleCancelCodCharges = () => {
+    setCodCharges(originalCodCharges);
+    setIsEditingCodCharges(false);
+  };
+
+  // Offers Management
+  const fetchOffers = async () => {
+    try {
+      const res = await api.get('/api/admin/offers', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      setOffers(res.data || []);
+    } catch (error) {
+      console.error('Error fetching offers:', error);
+      toast.error('Error loading offers');
+    }
+  };
+
+  const handleCreateOffer = () => {
+    setOfferForm({
+      code: '',
+      offerType: 'coupon',
+      discount: '',
+      discountType: 'percentage',
+      description: '',
+      couponDisplayText: '',
+      isActive: true,
+      showOnHomePage: true,
+      category: '',
+      subcategories: [],
+      products: [],
+      bundlePrice: '',
+      bundleQuantity: '',
+      bundleDisplayText: ''
+    });
+    setSelectedCategoryForOffer('');
+    setSelectedSubcategoriesForOffer([]);
+    setSelectedProductsForOffer([]);
+    setEditingOffer(null);
+    setShowOfferForm(true);
+  };
+
+  const handleEditOffer = async (offer) => {
+    try {
+      const offerType = offer.offerType || 'coupon';
+      
+      setOfferForm({
+        code: offer.code || '',
+        offerType: offerType,
+        discount: offer.discount !== undefined ? offer.discount : '',
+        discountType: offer.discountType || 'percentage',
+        description: offer.description || '',
+        couponDisplayText: offer.couponDisplayText || '',
+        isActive: offer.isActive !== undefined ? offer.isActive : true,
+        showOnHomePage: offer.showOnHomePage !== undefined ? offer.showOnHomePage : (offerType === 'coupon'),
+        category: offer.category || '',
+        subcategories: offer.subcategories || [],
+        products: offer.products ? (Array.isArray(offer.products) ? offer.products.map(p => p._id || p) : []) : [],
+        bundlePrice: offer.bundlePrice !== undefined ? offer.bundlePrice : '',
+        bundleQuantity: offer.bundleQuantity !== undefined ? offer.bundleQuantity : '',
+        bundleDisplayText: offer.bundleDisplayText || ''
+      });
+      
+      // Only handle bundle-specific setup if it's a bundle offer
+      if (offerType === 'bundle') {
+        const category = offer.category || '';
+        const subcategories = offer.subcategories || [];
+        setSelectedCategoryForOffer(category);
+        setSelectedSubcategoriesForOffer(subcategories);
+        
+        // Ensure products are loaded before auto-selecting
+        if (allProducts.length === 0) {
+          await fetchAllProducts();
+        }
+        
+        // Auto-select products from subcategories when editing (will be handled by useEffect)
+        setSelectedProductsForOffer([]); // Reset first, useEffect will populate
+      } else {
+        // Reset bundle-related state for coupon offers
+        setSelectedCategoryForOffer('');
+        setSelectedSubcategoriesForOffer([]);
+        setSelectedProductsForOffer([]);
+      }
+      
+      setEditingOffer(offer);
+      setShowOfferForm(true);
+      
+      // Scroll to form after a brief delay to ensure it's rendered
+      setTimeout(() => {
+        const formSection = document.querySelector('.offer-form-section');
+        if (formSection) {
+          formSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    } catch (error) {
+      console.error('Error setting up edit offer:', error);
+      toast.error('Error loading offer for editing');
+    }
+  };
+
+  const handleSaveOffer = async () => {
+    try {
+      if (!offerForm.code) {
+        toast.error('Please enter an offer code');
+        return;
+      }
+
+      // Validate coupon offer
+      if (offerForm.offerType === 'coupon') {
+        if (!offerForm.discount) {
+          toast.error('Please enter a discount value');
+          return;
+        }
+        if (offerForm.discountType === 'percentage' && (offerForm.discount < 0 || offerForm.discount > 100)) {
+          toast.error('Percentage discount must be between 0 and 100');
+          return;
+        }
+        if (offerForm.discountType === 'fixed' && offerForm.discount < 0) {
+          toast.error('Fixed discount cannot be negative');
+          return;
+        }
+      }
+
+      // Validate bundle offer
+      if (offerForm.offerType === 'bundle') {
+        if (selectedSubcategoriesForOffer.length === 0) {
+          toast.error('Please select at least one subcategory from Men or Women categories for the bundle');
+          return;
+        }
+        if (!offerForm.bundleQuantity || offerForm.bundleQuantity < 1) {
+          toast.error('Please enter the number of products required for the bundle (minimum 1)');
+          return;
+        }
+        if (!offerForm.bundlePrice || offerForm.bundlePrice < 0) {
+          toast.error('Please enter a valid bundle price');
+          return;
+        }
+        if (selectedProductsForOffer.length === 0) {
+          toast.error('No products found in selected subcategories. Please add products first.');
+          return;
+        }
+        if (parseInt(offerForm.bundleQuantity) > selectedProductsForOffer.length) {
+          toast.error(`Bundle quantity (${offerForm.bundleQuantity}) cannot be greater than available products (${selectedProductsForOffer.length})`);
+          return;
+        }
+      }
+
+      const offerData = {
+        ...offerForm,
+        category: offerForm.offerType === 'bundle' ? (selectedCategoryForOffer || undefined) : undefined,
+        subcategories: offerForm.offerType === 'bundle' ? selectedSubcategoriesForOffer : undefined,
+        products: offerForm.offerType === 'bundle' ? selectedProductsForOffer : undefined,
+        bundlePrice: offerForm.offerType === 'bundle' ? parseFloat(offerForm.bundlePrice) : undefined,
+        bundleQuantity: offerForm.offerType === 'bundle' ? parseInt(offerForm.bundleQuantity) : undefined,
+        bundleDisplayText: offerForm.offerType === 'bundle' ? offerForm.bundleDisplayText : undefined,
+        discount: offerForm.offerType === 'coupon' ? parseFloat(offerForm.discount) : undefined
+      };
+
+      if (editingOffer) {
+        await api.put(
+          `/api/admin/offers/${editingOffer._id}`,
+          offerData,
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem('token')}`
+            }
+          }
+        );
+        toast.success('Offer updated successfully!');
+      } else {
+        await api.post(
+          '/api/admin/offers',
+          offerData,
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem('token')}`
+            }
+          }
+        );
+        toast.success('Offer created successfully!');
+      }
+
+      setShowOfferForm(false);
+      setEditingOffer(null);
+      fetchOffers();
+    } catch (error) {
+      console.error('Error saving offer:', error);
+      const errorMessage = error.response?.data?.message || 'Error saving offer';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleDeleteOffer = async (offerId) => {
+    if (!window.confirm('Are you sure you want to delete this offer?')) {
+      return;
+    }
+
+    try {
+      await api.delete(`/api/admin/offers/${offerId}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      toast.success('Offer deleted successfully!');
+      fetchOffers();
+    } catch (error) {
+      console.error('Error deleting offer:', error);
+      toast.error('Error deleting offer');
+    }
+  };
+
+  // Helper function to normalize image URLs for comparison
+  const normalizeImageUrl = (url) => {
+    if (!url) return '';
+    // Get the full URL using getImageUrl to ensure consistent format
+    const fullUrl = getImageUrl(url);
+    // Remove query parameters and fragments, convert to lowercase
+    // Also remove protocol and www for more robust comparison
+    let normalized = fullUrl.split('?')[0].split('#')[0].toLowerCase();
+    // Remove http:// or https://
+    normalized = normalized.replace(/^https?:\/\//, '');
+    // Remove www.
+    normalized = normalized.replace(/^www\./, '');
+    return normalized;
+  };
+
+  // Filter uploaded images to only show header carousel and logo images
+  const filteredUploadedImages = useMemo(() => {
+    if (!uploadedImages || uploadedImages.length === 0) return [];
+    
+    // Create a set of normalized header image URLs and logo URL for quick lookup
+    const headerImageUrls = new Set(
+      headerImages.map(img => normalizeImageUrl(img))
+    );
+    const logoUrl = logo ? normalizeImageUrl(logo) : null;
+    
+    // Filter images to only include those that match header images or logo
+    return uploadedImages.filter(image => {
+      const imageUrl = image.url || image;
+      const normalizedImageUrl = normalizeImageUrl(imageUrl);
+      
+      // Check if this image is a header image or the logo
+      return headerImageUrls.has(normalizedImageUrl) || 
+             (logoUrl && normalizedImageUrl === logoUrl);
+    });
+  }, [uploadedImages, headerImages, logo]);
+
   return (
     <div className="admin-dashboard">
       <div className="admin-container">
@@ -1072,6 +1438,18 @@ const AdminDashboard = () => {
           >
             Notes
           </button>
+          <button
+            onClick={() => setActiveTab('cod')}
+            className={activeTab === 'cod' ? 'active' : ''}
+          >
+            COD Settings
+          </button>
+          <button
+            onClick={() => setActiveTab('offers')}
+            className={activeTab === 'offers' ? 'active' : ''}
+          >
+            Offers
+          </button>
         </div>
 
         {activeTab === 'dashboard' && stats && (
@@ -1094,29 +1472,45 @@ const AdminDashboard = () => {
                   <p className="stat-label">Visitors</p>
                   <p className="stat-value">{stats.today.orders}</p>
                   <p className="stat-label">Orders</p>
-                  <p className="stat-value">₹{stats.today.revenue}</p>
-                  <p className="stat-label">Revenue</p>
+                  <p className="stat-value revenue-online">₹{stats.today.onlineRevenue || 0}</p>
+                  <p className="stat-label">Online Revenue</p>
+                  <p className="stat-value revenue-cod">₹{stats.today.codRevenue || 0}</p>
+                  <p className="stat-label">COD Revenue</p>
+                  <p className="stat-value revenue-total">₹{stats.today.revenue}</p>
+                  <p className="stat-label">Total Revenue</p>
                 </div>
                 <div className="stat-card">
                   <h3>Last 7 Days</h3>
                   <p className="stat-value">{stats.last7Days.orders}</p>
                   <p className="stat-label">Orders</p>
-                  <p className="stat-value">₹{stats.last7Days.revenue}</p>
-                  <p className="stat-label">Revenue</p>
+                  <p className="stat-value revenue-online">₹{stats.last7Days.onlineRevenue || 0}</p>
+                  <p className="stat-label">Online Revenue</p>
+                  <p className="stat-value revenue-cod">₹{stats.last7Days.codRevenue || 0}</p>
+                  <p className="stat-label">COD Revenue</p>
+                  <p className="stat-value revenue-total">₹{stats.last7Days.revenue}</p>
+                  <p className="stat-label">Total Revenue</p>
                 </div>
                 <div className="stat-card">
                   <h3>Last 30 Days</h3>
                   <p className="stat-value">{stats.last30Days.orders}</p>
                   <p className="stat-label">Orders</p>
-                  <p className="stat-value">₹{stats.last30Days.revenue}</p>
-                  <p className="stat-label">Revenue</p>
+                  <p className="stat-value revenue-online">₹{stats.last30Days.onlineRevenue || 0}</p>
+                  <p className="stat-label">Online Revenue</p>
+                  <p className="stat-value revenue-cod">₹{stats.last30Days.codRevenue || 0}</p>
+                  <p className="stat-label">COD Revenue</p>
+                  <p className="stat-value revenue-total">₹{stats.last30Days.revenue}</p>
+                  <p className="stat-label">Total Revenue</p>
                 </div>
                 <div className="stat-card">
                   <h3>All Time</h3>
                   <p className="stat-value">{stats.allTime.orders}</p>
                   <p className="stat-label">Orders</p>
-                  <p className="stat-value">₹{stats.allTime.revenue}</p>
-                  <p className="stat-label">Revenue</p>
+                  <p className="stat-value revenue-online">₹{stats.allTime.onlineRevenue || 0}</p>
+                  <p className="stat-label">Online Revenue</p>
+                  <p className="stat-value revenue-cod">₹{stats.allTime.codRevenue || 0}</p>
+                  <p className="stat-label">COD Revenue</p>
+                  <p className="stat-value revenue-total">₹{stats.allTime.revenue}</p>
+                  <p className="stat-label">Total Revenue</p>
                 </div>
               </div>
             </div>
@@ -1436,6 +1830,7 @@ const AdminDashboard = () => {
                     <th>Size</th>
                     <th>Address</th>
                     <th>Payment Status</th>
+                    <th>COD</th>
                     <th>Order Status</th>
                     <th>Actions</th>
                   </tr>
@@ -1530,6 +1925,11 @@ const AdminDashboard = () => {
                           )}
                         </td>
                         <td>{order.paymentStatus}</td>
+                        <td>
+                          <span className={order.paymentMethod === 'cod' ? 'cod-badge cod-yes' : 'cod-badge cod-no'}>
+                            {order.paymentMethod === 'cod' ? 'Yes' : 'No'}
+                          </span>
+                        </td>
                         <td>
                           <select
                             value={order.orderStatus}
@@ -1788,10 +2188,10 @@ const AdminDashboard = () => {
             </div>
 
             <div className="uploaded-images-section">
-              <h3>All Uploaded Images ({uploadedImages.length})</h3>
-              {uploadedImages.length > 0 ? (
+              <h3>All Uploaded Images ({filteredUploadedImages.length})</h3>
+              {filteredUploadedImages.length > 0 ? (
                 <div className="uploaded-images-grid">
-                  {uploadedImages.map((image, index) => (
+                  {filteredUploadedImages.map((image, index) => (
                     <div key={index} className="uploaded-image-item">
                       <img 
                         src={getImageUrl(image.url || image)} 
@@ -2690,6 +3090,531 @@ const AdminDashboard = () => {
               {notes && !isEditingNotes && (
                 <div className="notes-info">
                   <p>Last saved: {originalNotes === notes ? 'Just now' : 'Unsaved changes'}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'cod' && (
+          <div className="cod-management">
+            <h2>COD (Cash on Delivery) Settings</h2>
+            <p className="cod-description">
+              Configure the extra charges that will be applied when customers select Cash on Delivery as their payment method during checkout.
+            </p>
+            
+            <div className="cod-section">
+              <div className="cod-header">
+                <h3>COD Charges</h3>
+                <div className="cod-actions">
+                  {!isEditingCodCharges ? (
+                    <button
+                      onClick={handleEditCodCharges}
+                      className="edit-cod-btn"
+                    >
+                      ✏️ Edit
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={saveCodCharges}
+                        className="save-cod-btn"
+                      >
+                        💾 Save
+                      </button>
+                      <button
+                        onClick={handleCancelCodCharges}
+                        className="cancel-cod-btn"
+                      >
+                        ❌ Cancel
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+              
+              <div className="cod-input-section">
+                <label htmlFor="cod-charges-input">Extra Charges (₹)</label>
+                <div className="cod-input-wrapper">
+                  <span className="currency-symbol">₹</span>
+                  <input
+                    id="cod-charges-input"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="cod-input"
+                    value={codCharges}
+                    onChange={(e) => setCodCharges(parseFloat(e.target.value) || 0)}
+                    disabled={!isEditingCodCharges}
+                    placeholder="Enter COD charges"
+                  />
+                </div>
+                <p className="cod-info">
+                  This amount will be added to the order total when customers select COD as their payment method.
+                </p>
+              </div>
+              
+              {!isEditingCodCharges && (
+                <div className="cod-display">
+                  <p><strong>Current COD Charges:</strong> ₹{codCharges.toFixed(2)}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'offers' && (
+          <div className="offers-management">
+            <div className="offers-header">
+              <h2>Discount Offers Management</h2>
+              <button onClick={handleCreateOffer} className="create-offer-btn">
+                + Create New Offer
+              </button>
+            </div>
+
+            {showOfferForm && (
+              <div className="offer-form-section">
+                <h3>{editingOffer ? 'Edit Offer' : 'Create New Offer'}</h3>
+                <div className="offer-form">
+                  <div className="form-group">
+                    <label>Offer Type *</label>
+                    <select
+                      value={offerForm.offerType}
+                      onChange={(e) => {
+                        const newType = e.target.value;
+                        setOfferForm({ 
+                          ...offerForm, 
+                          offerType: newType,
+                          showOnHomePage: newType === 'bundle' ? false : true
+                        });
+                      }}
+                    >
+                      <option value="coupon">Coupon Offer</option>
+                      <option value="bundle">Bundle Offer</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Offer Code *</label>
+                    <input
+                      type="text"
+                      value={offerForm.code}
+                      onChange={(e) => setOfferForm({ ...offerForm, code: e.target.value.toUpperCase() })}
+                      placeholder="e.g., SAVE20 or BUNDLE1"
+                      maxLength={20}
+                    />
+                  </div>
+
+                  {offerForm.offerType === 'coupon' && (
+                    <>
+                      <div className="form-group">
+                        <label>Discount Type *</label>
+                        <select
+                          value={offerForm.discountType}
+                          onChange={(e) => setOfferForm({ ...offerForm, discountType: e.target.value })}
+                        >
+                          <option value="percentage">Percentage (%)</option>
+                          <option value="fixed">Fixed Amount (₹)</option>
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>
+                          Discount {offerForm.discountType === 'percentage' ? '(%)' : '(₹)'} *
+                        </label>
+                        <input
+                          type="number"
+                          value={offerForm.discount}
+                          onChange={(e) => setOfferForm({ ...offerForm, discount: e.target.value })}
+                          placeholder={offerForm.discountType === 'percentage' ? '0-100' : 'Amount'}
+                          min="0"
+                          max={offerForm.discountType === 'percentage' ? '100' : undefined}
+                          step={offerForm.discountType === 'percentage' ? '1' : '0.01'}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Coupon Display Text (Optional)</label>
+                        <input
+                          type="text"
+                          value={offerForm.couponDisplayText}
+                          onChange={(e) => setOfferForm({ ...offerForm, couponDisplayText: e.target.value })}
+                          placeholder="e.g., Get 20% OFF on all products"
+                          maxLength={100}
+                        />
+                        <small>
+                          Custom text to display on the coupon offer card. If left empty, will show: "{offerForm.discountType === 'percentage' ? `${offerForm.discount || 'X'}% OFF` : `₹${offerForm.discount || '0'} OFF`}"
+                        </small>
+                      </div>
+                    </>
+                  )}
+
+                  {offerForm.offerType === 'bundle' && (
+                    <>
+                      <div className="form-group">
+                        <label>Select Subcategories from Men & Women *</label>
+                        <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #ddd', padding: '15px', borderRadius: '4px', backgroundColor: '#f9f9f9' }}>
+                          {(() => {
+                            const menCategory = categories.find(cat => cat.name === 'Men');
+                            const womenCategory = categories.find(cat => cat.name === 'Women');
+                            const kidsCategory = categories.find(cat => cat.name === 'Kids');
+                            const menSubcategories = menCategory?.subcategories?.filter(sub => sub.isActive) || [];
+                            const womenSubcategories = womenCategory?.subcategories?.filter(sub => sub.isActive) || [];
+                            const kidsSubcategories = kidsCategory?.subcategories?.filter(sub => sub.isActive) || [];
+                            
+                            if (menSubcategories.length === 0 && womenSubcategories.length === 0 && kidsSubcategories.length === 0) {
+                              return (
+                                <div style={{ padding: '10px', color: '#666', fontStyle: 'italic' }}>
+                                  No active subcategories found. Please add subcategories first.
+                                </div>
+                              );
+                            }
+                            
+                            return (
+                              <div>
+                                {menSubcategories.length > 0 && (
+                                  <div style={{ marginBottom: '20px' }}>
+                                    <h4 style={{ marginBottom: '10px', color: '#333', fontSize: '14px', fontWeight: 'bold' }}>Men Subcategories</h4>
+                                    {menSubcategories.map(sub => (
+                                      <label key={`men-${sub._id}`} style={{ display: 'block', marginBottom: '8px', paddingLeft: '5px' }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedSubcategoriesForOffer.includes(sub.slug)}
+                                          onChange={(e) => {
+                                            if (e.target.checked) {
+                                              const newSubcategories = [...selectedSubcategoriesForOffer, sub.slug];
+                                              setSelectedSubcategoriesForOffer(newSubcategories);
+                                              
+                                              // Auto-select all products from selected subcategories (from any category)
+                                              const productsFromSubcategories = allProducts.filter(p => {
+                                                return newSubcategories.includes(p.subcategory);
+                                              });
+                                              setSelectedProductsForOffer(productsFromSubcategories.map(p => p._id));
+                                            } else {
+                                              const newSubcategories = selectedSubcategoriesForOffer.filter(s => s !== sub.slug);
+                                              setSelectedSubcategoriesForOffer(newSubcategories);
+                                              
+                                              // Update products to only include products from remaining subcategories
+                                              if (newSubcategories.length > 0) {
+                                                const productsFromSubcategories = allProducts.filter(p => {
+                                                  return newSubcategories.includes(p.subcategory);
+                                                });
+                                                setSelectedProductsForOffer(productsFromSubcategories.map(p => p._id));
+                                              } else {
+                                                setSelectedProductsForOffer([]);
+                                              }
+                                            }
+                                          }}
+                                        />
+                                        <span style={{ marginLeft: '8px' }}>{sub.name}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
+                                {womenSubcategories.length > 0 && (
+                                  <div style={{ marginBottom: '20px' }}>
+                                    <h4 style={{ marginBottom: '10px', color: '#333', fontSize: '14px', fontWeight: 'bold' }}>Women Subcategories</h4>
+                                    {womenSubcategories.map(sub => (
+                                      <label key={`women-${sub._id}`} style={{ display: 'block', marginBottom: '8px', paddingLeft: '5px' }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedSubcategoriesForOffer.includes(sub.slug)}
+                                          onChange={(e) => {
+                                            if (e.target.checked) {
+                                              const newSubcategories = [...selectedSubcategoriesForOffer, sub.slug];
+                                              setSelectedSubcategoriesForOffer(newSubcategories);
+                                              
+                                              // Auto-select all products from selected subcategories (from any category)
+                                              const productsFromSubcategories = allProducts.filter(p => {
+                                                return newSubcategories.includes(p.subcategory);
+                                              });
+                                              setSelectedProductsForOffer(productsFromSubcategories.map(p => p._id));
+                                            } else {
+                                              const newSubcategories = selectedSubcategoriesForOffer.filter(s => s !== sub.slug);
+                                              setSelectedSubcategoriesForOffer(newSubcategories);
+                                              
+                                              // Update products to only include products from remaining subcategories
+                                              if (newSubcategories.length > 0) {
+                                                const productsFromSubcategories = allProducts.filter(p => {
+                                                  return newSubcategories.includes(p.subcategory);
+                                                });
+                                                setSelectedProductsForOffer(productsFromSubcategories.map(p => p._id));
+                                              } else {
+                                                setSelectedProductsForOffer([]);
+                                              }
+                                            }
+                                          }}
+                                        />
+                                        <span style={{ marginLeft: '8px' }}>{sub.name}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
+                                {kidsSubcategories.length > 0 && (
+                                  <div>
+                                    <h4 style={{ marginBottom: '10px', color: '#333', fontSize: '14px', fontWeight: 'bold' }}>Kids Subcategories</h4>
+                                    {kidsSubcategories.map(sub => (
+                                      <label key={`kids-${sub._id}`} style={{ display: 'block', marginBottom: '8px', paddingLeft: '5px' }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedSubcategoriesForOffer.includes(sub.slug)}
+                                          onChange={(e) => {
+                                            if (e.target.checked) {
+                                              const newSubcategories = [...selectedSubcategoriesForOffer, sub.slug];
+                                              setSelectedSubcategoriesForOffer(newSubcategories);
+                                              
+                                              // Auto-select all products from selected subcategories (from any category)
+                                              const productsFromSubcategories = allProducts.filter(p => {
+                                                return newSubcategories.includes(p.subcategory);
+                                              });
+                                              setSelectedProductsForOffer(productsFromSubcategories.map(p => p._id));
+                                            } else {
+                                              const newSubcategories = selectedSubcategoriesForOffer.filter(s => s !== sub.slug);
+                                              setSelectedSubcategoriesForOffer(newSubcategories);
+                                              
+                                              // Update products to only include products from remaining subcategories
+                                              if (newSubcategories.length > 0) {
+                                                const productsFromSubcategories = allProducts.filter(p => {
+                                                  return newSubcategories.includes(p.subcategory);
+                                                });
+                                                setSelectedProductsForOffer(productsFromSubcategories.map(p => p._id));
+                                              } else {
+                                                setSelectedProductsForOffer([]);
+                                              }
+                                            }
+                                          }}
+                                        />
+                                        <span style={{ marginLeft: '8px' }}>{sub.name}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                        <small>You can select subcategories from Men, Women, and Kids categories. All products from selected subcategories will be included in the bundle.</small>
+                      </div>
+                      {selectedSubcategoriesForOffer.length > 0 && (
+                        <div className="form-group">
+                          <label>Products in Bundle (Auto-selected)</label>
+                          <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #ddd', padding: '10px', borderRadius: '4px', backgroundColor: '#f5f5f5' }}>
+                            {allProducts.length === 0 ? (
+                              <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+                                Loading products...
+                              </div>
+                            ) : (
+                              (() => {
+                                const filteredProducts = allProducts.filter(p => {
+                                  return selectedSubcategoriesForOffer.includes(p.subcategory);
+                                });
+                                
+                                if (filteredProducts.length === 0) {
+                                  return (
+                                    <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+                                      No products found in selected subcategories. Please add products first.
+                                    </div>
+                                  );
+                                }
+                                
+                                return (
+                                  <div>
+                                    {filteredProducts.map(product => (
+                                      <div key={product._id} style={{ padding: '8px', marginBottom: '4px', border: '1px solid #eee', borderRadius: '4px', backgroundColor: 'white' }}>
+                                        <span>
+                                          {product.name} - ₹{product.price}
+                                          {product.subcategory && ` (${product.subcategory})`}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()
+                            )}
+                          </div>
+                          <small>
+                            <strong>{selectedProductsForOffer.length} product(s)</strong> will be included in this bundle
+                          </small>
+                        </div>
+                      )}
+                      <div className="form-group">
+                        <label>Number of Products in Bundle *</label>
+                        <input
+                          type="number"
+                          value={offerForm.bundleQuantity}
+                          onChange={(e) => setOfferForm({ ...offerForm, bundleQuantity: e.target.value })}
+                          placeholder="e.g., 3"
+                          min="1"
+                          step="1"
+                        />
+                        <small>
+                          How many products the customer needs to select to get the bundle price
+                        </small>
+                      </div>
+                      <div className="form-group">
+                        <label>Bundle Price (₹) *</label>
+                        <input
+                          type="number"
+                          value={offerForm.bundlePrice}
+                          onChange={(e) => setOfferForm({ ...offerForm, bundlePrice: e.target.value })}
+                          placeholder="Enter bundle price"
+                          min="0"
+                          step="0.01"
+                        />
+                        <small>
+                          Total price for {offerForm.bundleQuantity || 'X'} product(s) in this bundle
+                          {offerForm.bundleQuantity && offerForm.bundlePrice && (
+                            <span style={{ display: 'block', marginTop: '4px', fontWeight: 'bold', color: '#4CAF50' }}>
+                              Example: {offerForm.bundleQuantity} products at ₹{offerForm.bundlePrice}
+                            </span>
+                          )}
+                        </small>
+                      </div>
+                      <div className="form-group">
+                        <label>Bundle Display Text (Optional)</label>
+                        <input
+                          type="text"
+                          value={offerForm.bundleDisplayText}
+                          onChange={(e) => setOfferForm({ ...offerForm, bundleDisplayText: e.target.value })}
+                          placeholder="e.g., 2 hip hop tshirts at 1299"
+                          maxLength={100}
+                        />
+                        <small>
+                          Custom text to display on the offer card. If left empty, will show: "{offerForm.bundleQuantity || 'X'} products at ₹{offerForm.bundlePrice || '0'}"
+                        </small>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="form-group">
+                    <label>Description</label>
+                    <textarea
+                      value={offerForm.description}
+                      onChange={(e) => setOfferForm({ ...offerForm, description: e.target.value })}
+                      placeholder="Optional description for the offer"
+                      rows="3"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={offerForm.isActive}
+                        onChange={(e) => setOfferForm({ ...offerForm, isActive: e.target.checked })}
+                      />
+                      Active
+                    </label>
+                  </div>
+                  {offerForm.offerType === 'bundle' && (
+                    <div className="form-group">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={offerForm.showOnHomePage}
+                          onChange={(e) => setOfferForm({ ...offerForm, showOnHomePage: e.target.checked })}
+                        />
+                        Show on Home Page (Bundle offers are hidden by default)
+                      </label>
+                    </div>
+                  )}
+                  <div className="form-actions">
+                    <button onClick={handleSaveOffer} className="save-btn">
+                      {editingOffer ? 'Update Offer' : 'Create Offer'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowOfferForm(false);
+                        setEditingOffer(null);
+                      }}
+                      className="cancel-btn"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="offers-list">
+              <h3>All Offers ({offers.length})</h3>
+              {offers.length === 0 ? (
+                <p className="no-offers">No offers created yet. Create your first offer!</p>
+              ) : (
+                <div className="offers-grid">
+                  {offers.map((offer) => (
+                    <div key={offer._id} className={`offer-card ${!offer.isActive ? 'inactive' : ''}`}>
+                      <div className="offer-card-header">
+                        <div className="offer-code">{offer.code}</div>
+                        <div className="offer-status">
+                          {offer.isActive ? (
+                            <span className="status-active">Active</span>
+                          ) : (
+                            <span className="status-inactive">Inactive</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="offer-type-badge" style={{ 
+                        marginBottom: '8px', 
+                        padding: '4px 8px', 
+                        borderRadius: '4px', 
+                        fontSize: '12px',
+                        display: 'inline-block',
+                        background: offer.offerType === 'bundle' ? '#4CAF50' : '#2196F3',
+                        color: 'white'
+                      }}>
+                        {offer.offerType === 'bundle' ? '📦 Bundle' : '🎟️ Coupon'}
+                      </div>
+                      {offer.offerType === 'coupon' ? (
+                        <div className="offer-discount">
+                          <span className="discount-value">
+                            {offer.couponDisplayText || 
+                             (offer.discountType === 'percentage' 
+                               ? `${offer.discount}% OFF` 
+                               : `₹${offer.discount} OFF`)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="offer-discount">
+                          <span className="discount-value">
+                            {offer.bundleDisplayText || `${offer.bundleQuantity || 'X'} products at ₹${offer.bundlePrice || '0'}`}
+                          </span>
+                          <div style={{ fontSize: '12px', marginTop: '4px', color: '#666' }}>
+                            {offer.category} - {offer.products?.length || 0} available product(s)
+                            {offer.subcategories?.length > 0 && ` (${offer.subcategories.length} subcategory${offer.subcategories.length > 1 ? 'ies' : 'y'})`}
+                          </div>
+                        </div>
+                      )}
+                      {offer.description && (
+                        <div className="offer-description">{offer.description}</div>
+                      )}
+                      {offer.offerType === 'bundle' && (
+                        <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>
+                          {offer.showOnHomePage ? 'Shown on Home' : 'Hidden from Home'}
+                        </div>
+                      )}
+                      <div className="offer-actions">
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleEditOffer(offer);
+                          }}
+                          className="edit-btn"
+                          type="button"
+                        >
+                          ✏️ Edit
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleDeleteOffer(offer._id);
+                          }}
+                          className="delete-btn"
+                          type="button"
+                        >
+                          🗑️ Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

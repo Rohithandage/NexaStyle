@@ -62,6 +62,13 @@ const HeaderCarousel = ({ images }) => {
     setCurrentIndex(index);
   };
 
+  // Helper function to extract image URL from string or object
+  const getImageUrl = (item) => {
+    if (!item) return '';
+    if (typeof item === 'string') return item;
+    return item.imageUrl || item.url || '';
+  };
+
   // Always render container to reserve space, even when no images
   // This prevents layout shift when images load
   if (!images || images.length === 0) {
@@ -74,7 +81,7 @@ const HeaderCarousel = ({ images }) => {
     );
   }
 
-  const firstImage = images[0];
+  const firstImage = getImageUrl(images[0]);
   const hasMultipleImages = images.length > 1;
 
   return (
@@ -109,14 +116,14 @@ const HeaderCarousel = ({ images }) => {
           
           <div className="carousel-slide">
             <img 
-              src={getOptimizedImageUrl(images[currentIndex], 1200)} 
+              src={getOptimizedImageUrl(getImageUrl(images[currentIndex]), 1200)} 
               srcSet={`
-                ${getOptimizedImageUrl(images[currentIndex], 768)} 768w,
-                ${getOptimizedImageUrl(images[currentIndex], 1024)} 1024w,
-                ${getOptimizedImageUrl(images[currentIndex], 1200)} 1200w
+                ${getOptimizedImageUrl(getImageUrl(images[currentIndex]), 768)} 768w,
+                ${getOptimizedImageUrl(getImageUrl(images[currentIndex]), 1024)} 1024w,
+                ${getOptimizedImageUrl(getImageUrl(images[currentIndex]), 1200)} 1200w
               `}
               sizes="(max-width: 768px) 100vw, (max-width: 1024px) 100vw, 1200px"
-              alt={`Header ${currentIndex + 1}`}
+              alt={images[currentIndex]?.name || `Header ${currentIndex + 1}`}
               className="carousel-image"
               loading="lazy"
               decoding="async"

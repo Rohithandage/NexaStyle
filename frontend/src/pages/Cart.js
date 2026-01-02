@@ -90,6 +90,10 @@ const Cart = () => {
   const navigate = useNavigate();
   const [cart, setCart] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [offers, setOffers] = useState([]);
+  const [bundleOffers, setBundleOffers] = useState([]);
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [appliedBundleOffer, setAppliedBundleOffer] = useState(null);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -97,7 +101,29 @@ const Cart = () => {
       return;
     }
     fetchCart();
+    fetchOffers();
+    
+    // Listen for coupon updates from other pages
+    const handleCouponUpdate = () => {
+      fetchOffers();
+    };
+    window.addEventListener('couponApplied', handleCouponUpdate);
+    window.addEventListener('storage', handleCouponUpdate);
+    
+    return () => {
+      window.removeEventListener('couponApplied', handleCouponUpdate);
+      window.removeEventListener('storage', handleCouponUpdate);
+    };
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (cart && cart.items && cart.items.length > 0) {
+      fetchBundleOffers();
+    } else {
+      setBundleOffers([]);
+      setAppliedBundleOffer(null);
+    }
+  }, [cart]);
 
   const fetchCart = async () => {
     try {
@@ -112,6 +138,74 @@ const Cart = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchOffers = async () => {
+    try {
+      const res = await api.get('/api/settings/offers');
+      setOffers(res.data.offers || []);
+      
+      // Check for applied coupon from localStorage
+      const pendingCouponCode = localStorage.getItem('pendingCouponCode');
+      if (pendingCouponCode && res.data.offers) {
+        const coupon = res.data.offers.find(
+          offer => offer.isActive && offer.code.toUpperCase() === pendingCouponCode.toUpperCase()
+        );
+        if (coupon) {
+          setAppliedCoupon(coupon);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching offers:', error);
+    }
+  };
+
+  const fetchBundleOffers = async () => {
+    try {
+      const res = await api.get('/api/cart/bundle-offers', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const applicableOffers = res.data.applicableOffers || [];
+      setBundleOffers(applicableOffers);
+      
+      // Auto-apply the first applicable bundle offer if available
+      if (applicableOffers.length > 0 && !appliedBundleOffer) {
+        setAppliedBundleOffer(applicableOffers[0]);
+      }
+    } catch (error) {
+      console.error('Error fetching bundle offers:', error);
+    }
+  };
+
+  // Calculate cart total with offers
+  const calculateCartTotal = () => {
+    let total = cart?.total || 0;
+    
+    // Apply bundle pricing if applicable
+    if (appliedBundleOffer) {
+      const bundleProductsTotal = appliedBundleOffer.matchingProducts.reduce((sum, match) => {
+        const cartItem = cart.items.find(item => 
+          item.product._id === match.productId || item.product._id.toString() === match.productId
+        );
+        return sum + (cartItem ? cartItem.price * cartItem.quantity : 0);
+      }, 0);
+      
+      total = total - bundleProductsTotal + appliedBundleOffer.bundlePrice;
+    }
+    
+    // Apply coupon discount if applicable (on top of bundle pricing)
+    if (appliedCoupon) {
+      if (appliedCoupon.discountType === 'percentage') {
+        const discount = (total * appliedCoupon.discount) / 100;
+        total = Math.max(0, total - discount);
+      } else {
+        total = Math.max(0, total - appliedCoupon.discount);
+      }
+    }
+    
+    return total;
   };
 
   const updateQuantity = async (itemId, newQuantity) => {
@@ -241,17 +335,166 @@ const Cart = () => {
 
           <div className="cart-summary">
             <h2>Order Summary</h2>
+            
+            {/* Applied Offers Section */}
+            {(appliedCoupon || appliedBundleOffer) && (
+              <div className="cart-applied-offers" style={{ 
+                marginBottom: '1rem', 
+                padding: '1rem', 
+                backgroundColor: '#f0f9ff', 
+                borderRadius: '8px',
+                border: '1px solid #bae6fd'
+              }}>
+                <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', color: '#0369a1' }}>Applied Offers</h3>
+                
+                {appliedBundleOffer && (
+                  <div style={{ 
+                    marginBottom: '0.5rem', 
+                    padding: '0.75rem', 
+                    backgroundColor: 'white', 
+                    borderRadius: '6px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: '600', color: '#059669' }}>
+                        📦 {appliedBundleOffer.offer.bundleDisplayText || 
+                             `${appliedBundleOffer.bundleQuantity || appliedBundleOffer.offer.bundleQuantity || 'X'} products at ₹${appliedBundleOffer.bundlePrice}`}
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+                        Code: {appliedBundleOffer.offer.code}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setAppliedBundleOffer(null);
+                        toast.info('Bundle offer removed');
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#dc2626',
+                        cursor: 'pointer',
+                        fontSize: '1.2rem',
+                        padding: '0.25rem 0.5rem'
+                      }}
+                      title="Remove bundle offer"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+                
+                {appliedCoupon && (
+                  <div style={{ 
+                    padding: '0.75rem', 
+                    backgroundColor: 'white', 
+                    borderRadius: '6px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: '600', color: '#059669' }}>
+                        🎟️ {appliedCoupon.code} - {appliedCoupon.couponDisplayText || 
+                          (appliedCoupon.discountType === 'percentage' 
+                            ? `${appliedCoupon.discount}% OFF` 
+                            : `₹${appliedCoupon.discount} OFF`)}
+                      </div>
+                      {appliedCoupon.description && (
+                        <div style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+                          {appliedCoupon.description}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => {
+                        setAppliedCoupon(null);
+                        localStorage.removeItem('pendingCouponCode');
+                        window.dispatchEvent(new Event('couponApplied'));
+                        toast.info('Coupon removed');
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#dc2626',
+                        cursor: 'pointer',
+                        fontSize: '1.2rem',
+                        padding: '0.25rem 0.5rem'
+                      }}
+                      title="Remove coupon"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="summary-row">
               <span>Subtotal:</span>
               <span>₹{cart.total}</span>
             </div>
+            
+            {appliedBundleOffer && (
+              <div className="summary-row" style={{ color: '#059669', fontSize: '0.9rem' }}>
+                <span>
+                  Bundle Offer ({appliedBundleOffer.offer.code}): 
+                  <span style={{ fontSize: '0.85rem', display: 'block', color: '#666', marginTop: '0.25rem' }}>
+                    {appliedBundleOffer.matchingProducts.length} product(s) at bundle price
+                  </span>
+                </span>
+                <span>
+                  -₹{(() => {
+                    const bundleProductsTotal = appliedBundleOffer.matchingProducts.reduce((sum, match) => {
+                      const cartItem = cart.items.find(item => 
+                        item.product._id === match.productId || item.product._id.toString() === match.productId
+                      );
+                      return sum + (cartItem ? cartItem.price * cartItem.quantity : 0);
+                    }, 0);
+                    return (bundleProductsTotal - appliedBundleOffer.bundlePrice).toFixed(2);
+                  })()}
+                </span>
+              </div>
+            )}
+            
+            {appliedCoupon && (
+              <div className="summary-row" style={{ color: '#059669', fontSize: '0.9rem' }}>
+                <span>
+                  Discount ({appliedCoupon.code}): 
+                  {appliedCoupon.discountType === 'percentage' 
+                    ? ` -${appliedCoupon.discount}%` 
+                    : ` -₹${appliedCoupon.discount}`}
+                </span>
+                <span>
+                  -₹{(() => {
+                    let totalForDiscount = cart?.total || 0;
+                    if (appliedBundleOffer) {
+                      const bundleProductsTotal = appliedBundleOffer.matchingProducts.reduce((sum, match) => {
+                        const cartItem = cart.items.find(item => 
+                          item.product._id === match.productId || item.product._id.toString() === match.productId
+                        );
+                        return sum + (cartItem ? cartItem.price * cartItem.quantity : 0);
+                      }, 0);
+                      totalForDiscount = totalForDiscount - bundleProductsTotal + appliedBundleOffer.bundlePrice;
+                    }
+                    const discount = appliedCoupon.discountType === 'percentage'
+                      ? (totalForDiscount * appliedCoupon.discount) / 100
+                      : appliedCoupon.discount;
+                    return discount.toFixed(2);
+                  })()}
+                </span>
+              </div>
+            )}
+            
             <div className="summary-row">
               <span>Shipping:</span>
               <span>Free</span>
             </div>
             <div className="summary-row total">
               <span>Total:</span>
-              <span>₹{cart.total}</span>
+              <span>₹{calculateCartTotal().toFixed(2)}</span>
             </div>
             <button
               onClick={() => navigate('/checkout')}

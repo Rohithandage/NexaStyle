@@ -112,10 +112,18 @@ const ProductDetail = () => {
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [isImageZoomed, setIsImageZoomed] = useState(false);
   const [hasCartItems, setHasCartItems] = useState(false);
+  const [offers, setOffers] = useState([]);
+  const [dismissedOffers, setDismissedOffers] = useState([]);
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponError, setCouponError] = useState('');
 
   useEffect(() => {
     fetchProduct();
+    fetchOffers();
+    checkAppliedCoupon();
     if (isAuthenticated) {
       checkCartItems();
     }
@@ -125,9 +133,17 @@ const ProductDetail = () => {
         checkCartItems();
       }
     };
+    // Listen for coupon updates
+    const handleCouponUpdate = () => {
+      checkAppliedCoupon();
+    };
     window.addEventListener('cartUpdated', handleCartUpdate);
+    window.addEventListener('couponApplied', handleCouponUpdate);
+    window.addEventListener('storage', handleCouponUpdate);
     return () => {
       window.removeEventListener('cartUpdated', handleCartUpdate);
+      window.removeEventListener('couponApplied', handleCouponUpdate);
+      window.removeEventListener('storage', handleCouponUpdate);
     };
   }, [id, isAuthenticated]);
 
@@ -190,6 +206,123 @@ const ProductDetail = () => {
       toast.error('Error loading product');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchOffers = async () => {
+    try {
+      const res = await api.get('/api/settings/offers');
+      setOffers(res.data.offers || []);
+      checkAppliedCoupon();
+    } catch (error) {
+      console.error('Error fetching offers:', error);
+    }
+  };
+
+  const checkAppliedCoupon = () => {
+    const pendingCouponCode = localStorage.getItem('pendingCouponCode');
+    if (pendingCouponCode && offers.length > 0) {
+      const coupon = offers.find(
+        offer => offer.isActive && offer.code.toUpperCase() === pendingCouponCode.toUpperCase()
+      );
+      if (coupon) {
+        setAppliedCoupon(coupon);
+        setCouponCode(coupon.code);
+      } else {
+        setAppliedCoupon(null);
+        setCouponCode('');
+      }
+    } else if (!pendingCouponCode) {
+      setAppliedCoupon(null);
+      setCouponCode('');
+    }
+  };
+
+  const handleDismissOffer = (offerId) => {
+    setDismissedOffers([...dismissedOffers, offerId]);
+  };
+
+  // Color gradients for offer cards
+  const offerColors = [
+    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+    'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+    'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+    'linear-gradient(135deg, #30cfd0 0%, #330867 100%)',
+    'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
+    'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)'
+  ];
+
+  const getOfferColor = (index) => {
+    return offerColors[index % offerColors.length];
+  };
+
+  const visibleOffers = offers.filter(
+    offer => offer.isActive && !dismissedOffers.includes(offer._id)
+  );
+
+  const handleApplyCoupon = (code = null) => {
+    setCouponError('');
+    const codeToApply = code || couponCode.trim();
+    
+    if (!codeToApply) {
+      setCouponError('Please enter a coupon code');
+      return;
+    }
+
+    const coupon = offers.find(
+      offer => offer.isActive && offer.code.toUpperCase() === codeToApply.toUpperCase()
+    );
+
+    if (coupon) {
+      // Check if already applied - toggle it off
+      if (appliedCoupon && appliedCoupon.code.toUpperCase() === coupon.code.toUpperCase()) {
+        // Remove the coupon
+        setAppliedCoupon(null);
+        setCouponCode('');
+        localStorage.removeItem('pendingCouponCode');
+        window.dispatchEvent(new Event('couponApplied'));
+        toast.info(`Coupon ${coupon.code} removed`);
+        return;
+      }
+      
+      // Apply the coupon
+      setAppliedCoupon(coupon);
+      setCouponCode(coupon.code);
+      // Store in localStorage so it syncs across all pages
+      localStorage.setItem('pendingCouponCode', coupon.code);
+      window.dispatchEvent(new Event('couponApplied'));
+      // Show minimal toast
+      toast.success(`Coupon ${coupon.code} applied!`);
+    } else {
+      setCouponError('Invalid coupon code');
+      toast.error('Invalid coupon code');
+    }
+  };
+
+  const handleApplyOffer = (offer) => {
+    handleApplyCoupon(offer.code);
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode('');
+    setCouponError('');
+    localStorage.removeItem('pendingCouponCode');
+    window.dispatchEvent(new Event('couponApplied'));
+    toast.info('Coupon removed');
+  };
+
+  // Calculate price with coupon discount
+  const calculatePriceWithCoupon = (basePrice) => {
+    if (!appliedCoupon) return basePrice;
+
+    if (appliedCoupon.discountType === 'percentage') {
+      const discount = (basePrice * appliedCoupon.discount) / 100;
+      return Math.max(0, basePrice - discount);
+    } else {
+      return Math.max(0, basePrice - appliedCoupon.discount);
     }
   };
 
@@ -280,7 +413,10 @@ const ProductDetail = () => {
             
             return imagesToShow.length > 0 ? (
               <>
-                <div className="main-image">
+                <div 
+                  className={`main-image ${isImageZoomed ? 'zoomed' : ''}`}
+                  onClick={() => setIsImageZoomed(!isImageZoomed)}
+                >
                   <img 
                     src={getOptimizedImageUrl(imagesToShow[selectedImageIndex] || imagesToShow[0], 'product-detail')} 
                     alt={`${product.name} - Image ${selectedImageIndex + 1}`}
@@ -300,7 +436,10 @@ const ProductDetail = () => {
                       <div
                         key={index}
                         className={`thumbnail ${selectedImageIndex === index ? 'active' : ''}`}
-                        onClick={() => setSelectedImageIndex(index)}
+                        onClick={() => {
+                          setSelectedImageIndex(index);
+                          setIsImageZoomed(false); // Reset zoom when changing image
+                        }}
                       >
                         <img 
                           src={getOptimizedImageUrl(image, 'thumbnail')} 
@@ -354,6 +493,12 @@ const ProductDetail = () => {
                   }
                 }
                 
+                // Apply coupon discount if available
+                let finalPrice = displayDiscountPrice && displayDiscountPrice > 0 ? displayDiscountPrice : currentPrice;
+                if (appliedCoupon) {
+                  finalPrice = calculatePriceWithCoupon(finalPrice);
+                }
+                
                 // Always show both original price (with strikethrough) and discount price when discount exists
                 if (displayDiscountPrice && displayDiscountPrice > 0) {
                   const discountPercent = displayDiscountPrice < originalPrice 
@@ -362,17 +507,31 @@ const ProductDetail = () => {
                   
                   return (
                     <>
-                      <span className="discount-price">₹{displayDiscountPrice}</span>
+                      <span className="discount-price">₹{finalPrice.toFixed(2)}</span>
                       <span className="original-price">₹{originalPrice}</span>
                       {discountPercent > 0 && (
                         <span className="discount-percent">
                           {discountPercent}% OFF
                         </span>
                       )}
+                      {appliedCoupon && (
+                        <span className="coupon-applied-badge">
+                          + {appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discount}%` : `₹${appliedCoupon.discount}`} OFF (Coupon)
+                        </span>
+                      )}
                     </>
                   );
                 } else {
-                  return <span className="price">₹{currentPrice}</span>;
+                  return (
+                    <>
+                      <span className="price">₹{finalPrice.toFixed(2)}</span>
+                      {appliedCoupon && (
+                        <span className="coupon-applied-badge">
+                          {appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discount}%` : `₹${appliedCoupon.discount}`} OFF (Coupon)
+                        </span>
+                      )}
+                    </>
+                  );
                 }
               })()}
             </div>
@@ -454,6 +613,45 @@ const ProductDetail = () => {
               <button onClick={() => setQuantity(quantity + 1)}>+</button>
             </div>
           </div>
+
+          {/* Offers Section */}
+          {visibleOffers.length > 0 && (
+            <div className="offers-section-product">
+              <h3>🎉 Special Offers</h3>
+              <div className="offers-container-product">
+                {visibleOffers.map((offer, index) => {
+                  const isApplied = appliedCoupon && appliedCoupon.code.toUpperCase() === offer.code.toUpperCase();
+                  return (
+                    <div
+                      key={offer._id}
+                      className={`offer-card-product ${isApplied ? 'applied' : ''}`}
+                      style={{ background: getOfferColor(index) }}
+                    >
+                      <div className="offer-content-product">
+                        <div className="offer-code-product">{offer.code}</div>
+                        <div className="offer-discount-product">
+                          {offer.discountType === 'percentage' ? (
+                            <span>{offer.discount}% OFF</span>
+                          ) : (
+                            <span>₹{offer.discount} OFF</span>
+                          )}
+                        </div>
+                        {offer.description && (
+                          <div className="offer-description-product">{offer.description}</div>
+                        )}
+                      <button
+                        className={`offer-apply-btn-product ${isApplied ? 'applied' : ''}`}
+                        onClick={() => handleApplyOffer(offer)}
+                      >
+                        {isApplied ? 'Remove' : 'Apply'}
+                      </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <button
             onClick={handleAddToCart}

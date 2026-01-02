@@ -89,6 +89,7 @@ const Checkout = () => {
   const navigate = useNavigate();
   const [cart, setCart] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('card');
+  const [codCharges, setCodCharges] = useState(0);
   const [shippingAddress, setShippingAddress] = useState({
     firstName: '',
     lastName: '',
@@ -102,6 +103,13 @@ const Checkout = () => {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [offers, setOffers] = useState([]);
+  const [dismissedOffers, setDismissedOffers] = useState([]);
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponError, setCouponError] = useState('');
+  const [bundleOffers, setBundleOffers] = useState([]);
+  const [appliedBundleOffer, setAppliedBundleOffer] = useState(null);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -109,12 +117,23 @@ const Checkout = () => {
       return;
     }
     fetchCart();
+    fetchCodCharges();
+    fetchOffers();
     
     // Detect mobile device safely
     if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
       setIsMobile(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
     }
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (cart && cart.items && cart.items.length > 0) {
+      fetchBundleOffers();
+    } else {
+      setBundleOffers([]);
+      setAppliedBundleOffer(null);
+    }
+  }, [cart]);
 
   const fetchCart = async () => {
     try {
@@ -133,6 +152,180 @@ const Checkout = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchCodCharges = async () => {
+    try {
+      const res = await api.get('/api/settings/cod-charges');
+      setCodCharges(parseFloat(res.data.codCharges) || 0);
+    } catch (error) {
+      console.error('Error fetching COD charges:', error);
+      // Set default to 0 if error
+      setCodCharges(0);
+    }
+  };
+
+  const fetchOffers = async () => {
+    try {
+      // Fetch all active coupon offers for checkout (not filtered by showOnHomePage)
+      const res = await api.get('/api/settings/offers/checkout');
+      const allOffers = res.data.offers || [];
+      
+      // Filter to only show active coupon offers
+      const activeOffers = allOffers.filter(offer => offer.isActive && offer.offerType === 'coupon');
+      setOffers(activeOffers);
+      
+      // Auto-apply coupon code from localStorage if available (silently)
+      const pendingCouponCode = localStorage.getItem('pendingCouponCode');
+      if (pendingCouponCode && activeOffers.length > 0) {
+        const coupon = activeOffers.find(
+          offer => offer.code.toUpperCase() === pendingCouponCode.toUpperCase()
+        );
+        if (coupon) {
+          setAppliedCoupon(coupon);
+          setCouponCode(coupon.code);
+          // Keep in localStorage so Home page can show "Applied" status
+          // Don't show toast - coupon was already applied from another page
+          window.dispatchEvent(new Event('couponApplied'));
+        } else {
+          localStorage.removeItem('pendingCouponCode'); // Clear if invalid
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching offers:', error);
+    }
+  };
+
+  const fetchBundleOffers = async () => {
+    try {
+      const res = await api.get('/api/cart/bundle-offers', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const applicableOffers = res.data.applicableOffers || [];
+      setBundleOffers(applicableOffers);
+      
+      // Auto-apply the first applicable bundle offer if available
+      if (applicableOffers.length > 0 && !appliedBundleOffer) {
+        setAppliedBundleOffer(applicableOffers[0]);
+        toast.success(`Bundle offer applied! Save ₹${(applicableOffers[0].originalTotal - applicableOffers[0].bundlePrice).toFixed(2)}`);
+      }
+    } catch (error) {
+      console.error('Error fetching bundle offers:', error);
+    }
+  };
+
+  const handleDismissOffer = (offerId) => {
+    setDismissedOffers([...dismissedOffers, offerId]);
+  };
+
+  // Color gradients for offer cards
+  const offerColors = [
+    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+    'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+    'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+    'linear-gradient(135deg, #30cfd0 0%, #330867 100%)',
+    'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
+    'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)'
+  ];
+
+  const getOfferColor = (index) => {
+    return offerColors[index % offerColors.length];
+  };
+
+  // Filter to show only active coupon offers (already filtered in fetchOffers, but double-check)
+  const visibleOffers = offers.filter(
+    offer => offer.isActive && offer.offerType === 'coupon' && !dismissedOffers.includes(offer._id)
+  );
+
+  const handleApplyCoupon = (code = null) => {
+    setCouponError('');
+    const codeToApply = code || couponCode.trim();
+    
+    if (!codeToApply) {
+      setCouponError('Please enter a coupon code');
+      return;
+    }
+
+    const coupon = offers.find(
+      offer => offer.isActive && offer.code.toUpperCase() === codeToApply.toUpperCase()
+    );
+
+    if (coupon) {
+      // Check if already applied - toggle it off
+      if (appliedCoupon && appliedCoupon.code.toUpperCase() === coupon.code.toUpperCase()) {
+        // Remove the coupon
+        setAppliedCoupon(null);
+        setCouponCode('');
+        localStorage.removeItem('pendingCouponCode');
+        window.dispatchEvent(new Event('couponApplied'));
+        toast.info(`Coupon ${coupon.code} removed`);
+        return;
+      }
+      
+      // Apply the coupon
+      setAppliedCoupon(coupon);
+      setCouponCode(coupon.code);
+      // Store in localStorage so Home page can show "Applied" status
+      localStorage.setItem('pendingCouponCode', coupon.code);
+      window.dispatchEvent(new Event('couponApplied'));
+      // Show minimal toast
+      toast.success(`Coupon ${coupon.code} applied!`);
+    } else {
+      setCouponError('Invalid coupon code');
+      toast.error('Invalid coupon code');
+    }
+  };
+
+  const handleApplyOffer = (offer) => {
+    handleApplyCoupon(offer.code);
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode('');
+    setCouponError('');
+    localStorage.removeItem('pendingCouponCode');
+    window.dispatchEvent(new Event('couponApplied'));
+    toast.info('Coupon removed');
+  };
+
+  // Calculate cart total with coupon discount and bundle pricing
+  const calculateCartTotal = () => {
+    let total = cart?.total || 0;
+    
+    // Apply bundle pricing if applicable
+    if (appliedBundleOffer) {
+      // Calculate total for bundle products
+      const bundleProductsTotal = appliedBundleOffer.matchingProducts.reduce((sum, match) => {
+        const cartItem = cart.items.find(item => 
+          item.product._id === match.productId || item.product._id.toString() === match.productId
+        );
+        return sum + (cartItem ? cartItem.price * cartItem.quantity : 0);
+      }, 0);
+      
+      // Replace bundle products total with bundle price
+      total = total - bundleProductsTotal + appliedBundleOffer.bundlePrice;
+    }
+    
+    // Apply coupon discount if applicable (on top of bundle pricing)
+    if (appliedCoupon) {
+      if (appliedCoupon.discountType === 'percentage') {
+        const discount = (total * appliedCoupon.discount) / 100;
+        total = Math.max(0, total - discount);
+      } else {
+        total = Math.max(0, total - appliedCoupon.discount);
+      }
+    }
+    
+    if (paymentMethod === 'cod' && codCharges > 0) {
+      total += codCharges;
+    }
+    
+    return total;
   };
 
   const handleInputChange = (e) => {
@@ -200,7 +393,22 @@ const Checkout = () => {
         '/api/orders/create',
         {
           shippingAddress,
-          paymentMethod
+          paymentMethod,
+          bundleOfferId: appliedBundleOffer?.offer._id,
+          adjustedTotal: (() => {
+            let total = cart?.total || 0;
+            if (appliedBundleOffer) {
+              const bundleProductsTotal = appliedBundleOffer.matchingProducts.reduce((sum, match) => {
+                const cartItem = cart.items.find(item => 
+                  item.product._id === match.productId || item.product._id.toString() === match.productId
+                );
+                return sum + (cartItem ? cartItem.price * cartItem.quantity : 0);
+              }, 0);
+              total = total - bundleProductsTotal + appliedBundleOffer.bundlePrice;
+            }
+            return total;
+          })(),
+          couponCode: appliedCoupon?.code
         },
         {
           headers: {
@@ -334,13 +542,18 @@ const Checkout = () => {
           toast.error(error.message || 'Failed to initialize payment gateway. Please try again.');
           setProcessing(false);
         }
+      } else if (paymentMethod === 'cod') {
+        // For COD orders, clear cart and navigate to orders
+        toast.success('Order placed successfully! You will pay on delivery.');
+        navigate('/orders');
       } else {
         toast.success('Order placed successfully!');
         navigate('/orders');
       }
     } catch (error) {
-      toast.error('Error placing order');
-    } finally {
+      console.error('Error placing order:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Error placing order';
+      toast.error(errorMessage);
       setProcessing(false);
     }
   };
@@ -494,6 +707,89 @@ const Checkout = () => {
               </div>
             </div>
 
+            {/* Bundle Offers Section */}
+            {bundleOffers.length > 0 && (
+              <div className="form-section offers-section-checkout">
+                <h2>📦 Bundle Offers</h2>
+                <div className="offers-container-checkout">
+                  {bundleOffers.map((bundleOffer, index) => (
+                    <div
+                      key={bundleOffer.offer._id}
+                      className={`offer-card-checkout ${appliedBundleOffer?.offer._id === bundleOffer.offer._id ? 'applied' : ''}`}
+                      style={{ background: 'linear-gradient(135deg, #4CAF50 0%, #45a049 100%)' }}
+                    >
+                      <div className="offer-content-checkout">
+                        <div className="offer-code-checkout">{bundleOffer.offer.code}</div>
+                        <div className="offer-discount-checkout">
+                          <span>
+                            {bundleOffer.offer.bundleDisplayText || 
+                             `${bundleOffer.bundleQuantity || bundleOffer.offer.bundleQuantity || 'X'} products at ₹${bundleOffer.bundlePrice}`}
+                          </span>
+                          <div style={{ fontSize: '12px', marginTop: '4px' }}>
+                            Save ₹{(bundleOffer.originalTotal - bundleOffer.bundlePrice).toFixed(2)} on {bundleOffer.matchingProducts.length} product(s)
+                          </div>
+                        </div>
+                        {bundleOffer.offer.description && (
+                          <div className="offer-description-checkout">{bundleOffer.offer.description}</div>
+                        )}
+                        <button
+                          className={`offer-apply-btn-checkout ${appliedBundleOffer?.offer._id === bundleOffer.offer._id ? 'applied' : ''}`}
+                          onClick={() => {
+                            if (appliedBundleOffer?.offer._id === bundleOffer.offer._id) {
+                              setAppliedBundleOffer(null);
+                              toast.info('Bundle offer removed');
+                            } else {
+                              setAppliedBundleOffer(bundleOffer);
+                              toast.success(`Bundle offer applied! Save ₹${(bundleOffer.originalTotal - bundleOffer.bundlePrice).toFixed(2)}`);
+                            }
+                          }}
+                        >
+                          {appliedBundleOffer?.offer._id === bundleOffer.offer._id ? 'Remove' : 'Apply'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Coupon Offers Section */}
+            {visibleOffers.length > 0 && (
+              <div className="form-section offers-section-checkout">
+                <h2>🎉 Special Offers</h2>
+                <div className="offers-container-checkout">
+                  {visibleOffers.map((offer, index) => (
+                    <div
+                      key={offer._id}
+                      className="offer-card-checkout"
+                      style={{ background: getOfferColor(index) }}
+                    >
+                      <div className="offer-content-checkout">
+                        <div className="offer-code-checkout">{offer.code}</div>
+                        <div className="offer-discount-checkout">
+                          <span>
+                            {offer.couponDisplayText || 
+                             (offer.discountType === 'percentage' 
+                               ? `${offer.discount}% OFF` 
+                               : `₹${offer.discount} OFF`)}
+                          </span>
+                        </div>
+                        {offer.description && (
+                          <div className="offer-description-checkout">{offer.description}</div>
+                        )}
+                        <button
+                          className={`offer-apply-btn-checkout ${appliedCoupon?.code === offer.code ? 'applied' : ''}`}
+                          onClick={() => handleApplyOffer(offer)}
+                        >
+                          {appliedCoupon?.code === offer.code ? 'Remove' : 'Apply'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="form-section">
               <h2>Payment Method</h2>
               <div className="payment-options">
@@ -517,6 +813,19 @@ const Checkout = () => {
                   />
                   <span>UPI</span>
                 </label>
+                <label className="payment-option">
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value="cod"
+                    checked={paymentMethod === 'cod'}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                  />
+                  <span>Cash on Delivery (COD)</span>
+                  {paymentMethod === 'cod' && codCharges > 0 && (
+                    <span className="cod-charge-badge">+ ₹{codCharges.toFixed(2)} extra charges</span>
+                  )}
+                </label>
               </div>
             </div>
 
@@ -533,7 +842,7 @@ const Checkout = () => {
               className="place-order-btn"
               disabled={processing}
             >
-              {processing ? 'Processing...' : `Place Order - ₹${cart?.total || 0}`}
+              {processing ? 'Processing...' : `Place Order - ₹${calculateCartTotal().toFixed(2)}`}
             </button>
           </form>
 
@@ -592,9 +901,69 @@ const Checkout = () => {
                 </div>
               ))}
             </div>
+            <div className="summary-subtotal">
+              <span>Subtotal:</span>
+              <span>₹{cart?.total || 0}</span>
+            </div>
+            {appliedBundleOffer && (
+              <div className="summary-bundle-discount">
+                <span>
+                  Bundle Offer ({appliedBundleOffer.offer.code}): 
+                  <span style={{ fontSize: '12px', display: 'block', color: '#666' }}>
+                    {appliedBundleOffer.matchingProducts.length} product(s) at bundle price
+                  </span>
+                </span>
+                <span>
+                  -₹{(() => {
+                    const bundleProductsTotal = appliedBundleOffer.matchingProducts.reduce((sum, match) => {
+                      const cartItem = cart.items.find(item => 
+                        item.product._id === match.productId || item.product._id.toString() === match.productId
+                      );
+                      return sum + (cartItem ? cartItem.price * cartItem.quantity : 0);
+                    }, 0);
+                    return (bundleProductsTotal - appliedBundleOffer.bundlePrice).toFixed(2);
+                  })()}
+                </span>
+              </div>
+            )}
+            {appliedCoupon && (
+              <div className="summary-coupon-discount">
+                <span>
+                  Discount ({appliedCoupon.code}): 
+                  {appliedCoupon.discountType === 'percentage' 
+                    ? ` -${appliedCoupon.discount}%` 
+                    : ` -₹${appliedCoupon.discount}`}
+                </span>
+                <span>
+                  -₹{(() => {
+                    let totalForDiscount = cart?.total || 0;
+                    // If bundle is applied, calculate discount on bundle-adjusted total
+                    if (appliedBundleOffer) {
+                      const bundleProductsTotal = appliedBundleOffer.matchingProducts.reduce((sum, match) => {
+                        const cartItem = cart.items.find(item => 
+                          item.product._id === match.productId || item.product._id.toString() === match.productId
+                        );
+                        return sum + (cartItem ? cartItem.price * cartItem.quantity : 0);
+                      }, 0);
+                      totalForDiscount = totalForDiscount - bundleProductsTotal + appliedBundleOffer.bundlePrice;
+                    }
+                    const discount = appliedCoupon.discountType === 'percentage'
+                      ? (totalForDiscount * appliedCoupon.discount) / 100
+                      : appliedCoupon.discount;
+                    return discount.toFixed(2);
+                  })()}
+                </span>
+              </div>
+            )}
+            {paymentMethod === 'cod' && codCharges > 0 && (
+              <div className="summary-cod-charges">
+                <span>COD Charges:</span>
+                <span>₹{codCharges.toFixed(2)}</span>
+              </div>
+            )}
             <div className="summary-total">
               <span>Total:</span>
-              <span>₹{cart?.total || 0}</span>
+              <span>₹{calculateCartTotal().toFixed(2)}</span>
             </div>
           </div>
         </div>

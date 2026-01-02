@@ -45,7 +45,7 @@ const orderSchema = new mongoose.Schema({
   },
   paymentMethod: {
     type: String,
-    enum: ['card', 'upi'],
+    enum: ['card', 'upi', 'cod'],
     required: true
   },
   paymentStatus: {
@@ -67,6 +67,13 @@ const orderSchema = new mongoose.Schema({
   paidAmount: {
     type: Number,
     default: 0
+  },
+  bundleOffer: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Offer'
+  },
+  couponCode: {
+    type: String
   },
   createdAt: {
     type: Date,

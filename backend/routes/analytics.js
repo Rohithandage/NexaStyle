@@ -449,31 +449,60 @@ router.get('/dashboard', auth, admin, async (req, res) => {
     const todayOrders = await Order.find({
       createdAt: { $gte: today }
     });
-    const todayRevenue = todayOrders
-      .filter(o => o.paymentStatus === 'completed')
-      .reduce((sum, o) => sum + o.paidAmount, 0);
+    
+    // Calculate today's revenue breakdown
+    const todayOnlineRevenue = todayOrders
+      .filter(o => (o.paymentMethod === 'card' || o.paymentMethod === 'upi') && o.paymentStatus === 'completed')
+      .reduce((sum, o) => sum + (o.paidAmount || o.totalAmount), 0);
+    
+    const todayCodRevenue = todayOrders
+      .filter(o => o.paymentMethod === 'cod' && o.orderStatus !== 'cancelled')
+      .reduce((sum, o) => sum + o.totalAmount, 0);
+    
+    const todayRevenue = todayOnlineRevenue + todayCodRevenue;
 
     // Last 7 days
     const last7DaysOrders = await Order.find({
       createdAt: { $gte: last7Days }
     });
-    const last7DaysRevenue = last7DaysOrders
-      .filter(o => o.paymentStatus === 'completed')
-      .reduce((sum, o) => sum + o.paidAmount, 0);
+    
+    const last7DaysOnlineRevenue = last7DaysOrders
+      .filter(o => (o.paymentMethod === 'card' || o.paymentMethod === 'upi') && o.paymentStatus === 'completed')
+      .reduce((sum, o) => sum + (o.paidAmount || o.totalAmount), 0);
+    
+    const last7DaysCodRevenue = last7DaysOrders
+      .filter(o => o.paymentMethod === 'cod' && o.orderStatus !== 'cancelled')
+      .reduce((sum, o) => sum + o.totalAmount, 0);
+    
+    const last7DaysRevenue = last7DaysOnlineRevenue + last7DaysCodRevenue;
 
     // Last 30 days
     const last30DaysOrders = await Order.find({
       createdAt: { $gte: last30Days }
     });
-    const last30DaysRevenue = last30DaysOrders
-      .filter(o => o.paymentStatus === 'completed')
-      .reduce((sum, o) => sum + o.paidAmount, 0);
+    
+    const last30DaysOnlineRevenue = last30DaysOrders
+      .filter(o => (o.paymentMethod === 'card' || o.paymentMethod === 'upi') && o.paymentStatus === 'completed')
+      .reduce((sum, o) => sum + (o.paidAmount || o.totalAmount), 0);
+    
+    const last30DaysCodRevenue = last30DaysOrders
+      .filter(o => o.paymentMethod === 'cod' && o.orderStatus !== 'cancelled')
+      .reduce((sum, o) => sum + o.totalAmount, 0);
+    
+    const last30DaysRevenue = last30DaysOnlineRevenue + last30DaysCodRevenue;
 
     // All time
     const allOrders = await Order.find();
-    const allRevenue = allOrders
-      .filter(o => o.paymentStatus === 'completed')
-      .reduce((sum, o) => sum + o.paidAmount, 0);
+    
+    const allOnlineRevenue = allOrders
+      .filter(o => (o.paymentMethod === 'card' || o.paymentMethod === 'upi') && o.paymentStatus === 'completed')
+      .reduce((sum, o) => sum + (o.paidAmount || o.totalAmount), 0);
+    
+    const allCodRevenue = allOrders
+      .filter(o => o.paymentMethod === 'cod' && o.orderStatus !== 'cancelled')
+      .reduce((sum, o) => sum + o.totalAmount, 0);
+    
+    const allRevenue = allOnlineRevenue + allCodRevenue;
 
     // Get country statistics from all time (to show more data)
     const allAnalytics = await Analytics.find({});
@@ -506,19 +535,27 @@ router.get('/dashboard', auth, admin, async (req, res) => {
       today: {
         visitors: todayAnalytics?.totalVisitors || 0,
         orders: todayOrders.length,
-        revenue: todayRevenue
+        revenue: todayRevenue,
+        onlineRevenue: todayOnlineRevenue,
+        codRevenue: todayCodRevenue
       },
       last7Days: {
         orders: last7DaysOrders.length,
-        revenue: last7DaysRevenue
+        revenue: last7DaysRevenue,
+        onlineRevenue: last7DaysOnlineRevenue,
+        codRevenue: last7DaysCodRevenue
       },
       last30Days: {
         orders: last30DaysOrders.length,
-        revenue: last30DaysRevenue
+        revenue: last30DaysRevenue,
+        onlineRevenue: last30DaysOnlineRevenue,
+        codRevenue: last30DaysCodRevenue
       },
       allTime: {
         orders: allOrders.length,
-        revenue: allRevenue
+        revenue: allRevenue,
+        onlineRevenue: allOnlineRevenue,
+        codRevenue: allCodRevenue
       },
       countries: countryStatsArray || []
     });

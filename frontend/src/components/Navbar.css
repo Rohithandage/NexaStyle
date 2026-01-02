@@ -8,6 +8,12 @@
   width: 100%;
   z-index: 9999;
   overflow: visible;
+  transition: top 0.3s ease;
+}
+
+/* Adjust navbar position when offer banner is visible - use CSS variable for exact height */
+body.has-offer-banner .navbar {
+  top: var(--offer-banner-height, 60px); /* Use dynamically calculated height */
 }
 
 .navbar-container {

@@ -52,12 +52,17 @@ const Home = () => {
   const [showAllTrending, setShowAllTrending] = useState(false);
   const [showAllFeatured, setShowAllFeatured] = useState(false);
   const [hasCartItems, setHasCartItems] = useState(false);
+  const [offers, setOffers] = useState([]);
+  const [dismissedOffers, setDismissedOffers] = useState([]);
+  const [appliedCouponCode, setAppliedCouponCode] = useState(null);
 
   useEffect(() => {
     fetchTrendingProducts();
     fetchFeaturedProducts();
     fetchHeaderImages();
+    fetchOffers();
     trackVisitor();
+    checkAppliedCoupon();
     if (isAuthenticated) {
       checkCartItems();
     }
@@ -67,11 +72,62 @@ const Home = () => {
         checkCartItems();
       }
     };
+    // Listen for coupon updates
+    const handleCouponUpdate = () => {
+      checkAppliedCoupon();
+    };
     window.addEventListener('cartUpdated', handleCartUpdate);
+    window.addEventListener('couponApplied', handleCouponUpdate);
+    window.addEventListener('storage', handleCouponUpdate);
     return () => {
       window.removeEventListener('cartUpdated', handleCartUpdate);
+      window.removeEventListener('couponApplied', handleCouponUpdate);
+      window.removeEventListener('storage', handleCouponUpdate);
     };
   }, [isAuthenticated]);
+
+  // Add class to body when offer banner is visible and set its height for navbar positioning
+  useEffect(() => {
+    const currentActiveOffer = offers.find(
+      offer => offer.isActive && !dismissedOffers.includes(offer._id)
+    );
+    if (currentActiveOffer) {
+      document.body.classList.add('has-offer-banner');
+      // Calculate actual offer banner height and set CSS variable
+      const offerBanner = document.querySelector('.home-offer-banner');
+      if (offerBanner) {
+        const height = offerBanner.offsetHeight;
+        document.documentElement.style.setProperty('--offer-banner-height', `${height}px`);
+      }
+    } else {
+      document.body.classList.remove('has-offer-banner');
+      document.documentElement.style.removeProperty('--offer-banner-height');
+    }
+    return () => {
+      document.body.classList.remove('has-offer-banner');
+      document.documentElement.style.removeProperty('--offer-banner-height');
+    };
+  }, [offers, dismissedOffers]);
+
+  // Update offer banner height on window resize
+  useEffect(() => {
+    const updateOfferBannerHeight = () => {
+      const offerBanner = document.querySelector('.home-offer-banner');
+      if (offerBanner && document.body.classList.contains('has-offer-banner')) {
+        const height = offerBanner.offsetHeight;
+        document.documentElement.style.setProperty('--offer-banner-height', `${height}px`);
+      }
+    };
+
+    window.addEventListener('resize', updateOfferBannerHeight);
+    // Also update after a short delay to ensure DOM is ready
+    const timeoutId = setTimeout(updateOfferBannerHeight, 100);
+
+    return () => {
+      window.removeEventListener('resize', updateOfferBannerHeight);
+      clearTimeout(timeoutId);
+    };
+  }, [offers, dismissedOffers]);
 
   const fetchHeaderImages = async () => {
     try {
@@ -79,6 +135,66 @@ const Home = () => {
       setHeaderImages(res.data.headerImages || []);
     } catch (error) {
       console.error('Error fetching header images:', error);
+    }
+  };
+
+  const fetchOffers = async () => {
+    try {
+      const res = await api.get('/api/settings/offers');
+      setOffers(res.data.offers || []);
+      checkAppliedCoupon();
+    } catch (error) {
+      console.error('Error fetching offers:', error);
+    }
+  };
+
+  const checkAppliedCoupon = () => {
+    const pendingCoupon = localStorage.getItem('pendingCouponCode');
+    if (pendingCoupon) {
+      setAppliedCouponCode(pendingCoupon);
+    } else {
+      setAppliedCouponCode(null);
+    }
+  };
+
+  const handleDismissOffer = (offerId) => {
+    setDismissedOffers([...dismissedOffers, offerId]);
+  };
+
+  const handleApplyOffer = (offer, e) => {
+    // Prevent event bubbling if clicked from close button
+    if (e) {
+      e.stopPropagation();
+    }
+    
+    // Check if already applied - toggle it off
+    if (appliedCouponCode && appliedCouponCode.toUpperCase() === offer.code.toUpperCase()) {
+      // Remove the coupon
+      localStorage.removeItem('pendingCouponCode');
+      setAppliedCouponCode(null);
+      window.dispatchEvent(new Event('couponApplied'));
+      toast.info(`Coupon ${offer.code} removed`);
+      return;
+    }
+    
+    // Apply the coupon
+    localStorage.setItem('pendingCouponCode', offer.code);
+    setAppliedCouponCode(offer.code);
+    window.dispatchEvent(new Event('couponApplied'));
+    
+    // Only show toast if navigating to checkout, otherwise apply silently
+    if (isAuthenticated) {
+      // Check if user has items in cart
+      if (hasCartItems) {
+        navigate('/checkout');
+        // Don't show toast - will be applied silently in checkout
+      } else {
+        // Store coupon for when items are added to cart - show minimal feedback
+        toast.success(`Coupon ${offer.code} saved!`);
+      }
+    } else {
+      // Store coupon even if not logged in - show minimal feedback
+      toast.success(`Coupon ${offer.code} saved!`);
     }
   };
 
@@ -285,6 +401,13 @@ const Home = () => {
         }
       );
       toast.success('Product added to cart!');
+      
+      // Check if there's a pending coupon code
+      const pendingCouponCode = localStorage.getItem('pendingCouponCode');
+      if (pendingCouponCode) {
+        toast.info(`Coupon ${pendingCouponCode} is saved! It will be applied at checkout.`);
+      }
+      
       // Dispatch event to update cart count in navbar
       window.dispatchEvent(new Event('cartUpdated'));
       // Check cart items to show View Cart button
@@ -303,8 +426,85 @@ const Home = () => {
     }
   };
 
+  // Get the first active offer that hasn't been dismissed
+  const activeOffer = offers.find(
+    offer => offer.isActive && !dismissedOffers.includes(offer._id)
+  );
+
+  // Check if the active offer is applied
+  const isOfferApplied = activeOffer && appliedCouponCode && 
+    appliedCouponCode.toUpperCase() === activeOffer.code.toUpperCase();
+
+  // Color gradients for offer cards
+  const offerColors = [
+    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+    'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+    'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+    'linear-gradient(135deg, #30cfd0 0%, #330867 100%)',
+    'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
+    'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)'
+  ];
+
+  const getOfferColor = (index) => {
+    return offerColors[index % offerColors.length];
+  };
+
   return (
     <div className="home-page-wrapper">
+      {/* Offer Card Banner at the top */}
+      {activeOffer && (
+        <div 
+          className="home-offer-banner"
+          style={{ background: getOfferColor(offers.indexOf(activeOffer)) }}
+          onClick={() => handleApplyOffer(activeOffer)}
+        >
+          <div className="home-offer-content">
+            <div className={`home-offer-badge ${isOfferApplied ? 'applied' : ''}`}>
+              {isOfferApplied ? '✅ Applied' : '🎉 Special Offer'}
+            </div>
+            <div className="home-offer-main">
+              <div className="home-offer-discount-wrapper">
+                <span className="home-offer-discount">
+                  {activeOffer.offerType === 'bundle' ? (
+                    activeOffer.bundleDisplayText || `${activeOffer.bundleQuantity || 'X'} products at ₹${activeOffer.bundlePrice || '0'}`
+                  ) : (
+                    activeOffer.couponDisplayText || 
+                    (activeOffer.discountType === 'percentage' 
+                      ? `${activeOffer.discount}% OFF` 
+                      : `₹${activeOffer.discount} OFF`)
+                  )}
+                </span>
+                <span className="home-offer-code-label">Use Code:</span>
+                <span className="home-offer-code">{activeOffer.code}</span>
+              </div>
+              {activeOffer.description && (
+                <div className="home-offer-description">{activeOffer.description}</div>
+              )}
+            </div>
+          </div>
+          <div className="home-offer-actions">
+            <button 
+              className={`home-offer-apply-btn ${isOfferApplied ? 'applied' : ''}`}
+              onClick={(e) => handleApplyOffer(activeOffer, e)}
+              aria-label={isOfferApplied ? "Remove offer" : "Apply offer"}
+            >
+              {isOfferApplied ? 'Remove' : 'Apply'}
+            </button>
+            <button 
+              className="home-offer-close"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDismissOffer(activeOffer._id);
+              }}
+              aria-label="Close offer"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
       {/* Always render carousel container to reserve space, even when loading */}
       <HeaderCarousel images={headerImages} />
       <div className="home">

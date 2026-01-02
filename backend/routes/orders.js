@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
 const Cart = require('../models/Cart');
+const Settings = require('../models/Settings');
 const { auth } = require('../middleware/auth');
 const Razorpay = require('razorpay');
 
@@ -13,7 +14,7 @@ const razorpay = new Razorpay({
 // Create order
 router.post('/create', auth, async (req, res) => {
   try {
-    const { shippingAddress, paymentMethod } = req.body;
+    const { shippingAddress, paymentMethod, bundleOfferId, adjustedTotal, couponCode } = req.body;
 
     const cart = await Cart.findOne({ user: req.user._id }).populate('items.product');
     if (!cart || cart.items.length === 0) {
@@ -30,20 +31,61 @@ router.post('/create', auth, async (req, res) => {
       price: item.price
     }));
 
-    const order = new Order({
+    // Calculate total amount - use adjusted total if bundle offer is applied
+    let totalAmount = adjustedTotal !== undefined ? parseFloat(adjustedTotal) : cart.total;
+    
+    // Apply coupon discount if provided
+    if (couponCode) {
+      const Offer = require('../models/Offer');
+      const coupon = await Offer.findOne({ 
+        code: couponCode.toUpperCase(),
+        offerType: 'coupon',
+        isActive: true 
+      });
+      
+      if (coupon) {
+        if (coupon.discountType === 'percentage') {
+          const discount = (totalAmount * coupon.discount) / 100;
+          totalAmount = Math.max(0, totalAmount - discount);
+        } else {
+          totalAmount = Math.max(0, totalAmount - coupon.discount);
+        }
+      }
+    }
+    
+    // Add COD charges if applicable
+    if (paymentMethod === 'cod') {
+      const setting = await Settings.findOne({ key: 'cod_charges' });
+      const codCharges = setting ? parseFloat(setting.value) || 0 : 0;
+      totalAmount = totalAmount + codCharges;
+    }
+
+    const orderData = {
       user: req.user._id,
       items: orderItems,
       shippingAddress,
       paymentMethod,
-      totalAmount: cart.total
-    });
+      totalAmount: totalAmount
+    };
+    
+    // Store bundle offer information if applicable
+    if (bundleOfferId) {
+      orderData.bundleOffer = bundleOfferId;
+    }
+    
+    // Store coupon code if applicable
+    if (couponCode) {
+      orderData.couponCode = couponCode.toUpperCase();
+    }
+    
+    const order = new Order(orderData);
 
     await order.save();
 
-    // Create Razorpay order
+    // Create Razorpay order only for card/upi payments
     if (paymentMethod === 'card' || paymentMethod === 'upi') {
       const razorpayOrder = await razorpay.orders.create({
-        amount: Math.round(cart.total * 100), // Amount in paise
+        amount: Math.round(totalAmount * 100), // Amount in paise
         currency: 'INR',
         receipt: `order_${order._id}`
       });
@@ -56,6 +98,18 @@ router.post('/create', auth, async (req, res) => {
         razorpayOrderId: razorpayOrder.id,
         razorpayKeyId: process.env.RAZORPAY_KEY_ID
       });
+    }
+
+    // For COD orders, clear cart and return order
+    if (paymentMethod === 'cod') {
+      cart.items = [];
+      cart.total = 0;
+      await cart.save();
+      
+      // Set order status for COD
+      order.paymentStatus = 'pending';
+      order.orderStatus = 'processing';
+      await order.save();
     }
 
     res.json({ order });

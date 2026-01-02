@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
+const Offer = require('../models/Offer');
 const { auth } = require('../middleware/auth');
 
 // Get user cart
@@ -160,6 +161,130 @@ router.delete('/clear', auth, async (req, res) => {
       await cart.save();
     }
     res.json({ message: 'Cart cleared' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Check for applicable bundle offers
+router.get('/bundle-offers', auth, async (req, res) => {
+  try {
+    const cart = await Cart.findOne({ user: req.user._id }).populate('items.product');
+    
+    if (!cart || cart.items.length === 0) {
+      return res.json({ applicableOffers: [] });
+    }
+
+    // Get all active bundle offers
+    const bundleOffers = await Offer.find({ 
+      offerType: 'bundle',
+      isActive: true 
+    }).populate('products');
+
+    const applicableOffers = [];
+
+    for (const offer of bundleOffers) {
+      // Get offer product IDs
+      const offerProductIds = offer.products.map(p => p._id.toString());
+      
+      // Find cart items that match bundle offer products
+      const bundleProductsInCart = cart.items.filter(item => {
+        const productId = item.product._id.toString();
+        return offerProductIds.includes(productId);
+      });
+
+      if (bundleProductsInCart.length === 0) {
+        continue; // No bundle products in cart
+      }
+
+      // Check category filter if specified
+      if (offer.category) {
+        const categoryMatches = bundleProductsInCart.filter(item =>
+          item.product.category === offer.category
+        );
+        
+        if (categoryMatches.length === 0) {
+          continue; // No products from required category
+        }
+        
+        // Check subcategory filter if specified
+        if (offer.subcategories && offer.subcategories.length > 0) {
+          const subcategoryMatches = categoryMatches.filter(item =>
+            offer.subcategories.includes(item.product.subcategory)
+          );
+          
+          if (subcategoryMatches.length === 0) {
+            continue; // No products from required subcategories
+          }
+          
+          // Use subcategory-filtered products
+          const matchingProducts = subcategoryMatches.filter(item =>
+            offerProductIds.includes(item.product._id.toString())
+          );
+          
+          // Check if cart has required quantity
+          const totalQuantity = matchingProducts.reduce((sum, item) => sum + item.quantity, 0);
+          if (matchingProducts.length > 0 && totalQuantity >= (offer.bundleQuantity || 1)) {
+            applicableOffers.push({
+              offer,
+              matchingProducts: matchingProducts.map(item => ({
+                productId: item.product._id.toString(),
+                productName: item.product.name,
+                quantity: item.quantity
+              })),
+              bundlePrice: offer.bundlePrice,
+              bundleQuantity: offer.bundleQuantity || 1,
+              originalTotal: matchingProducts.reduce((sum, item) => 
+                sum + (item.price * item.quantity), 0
+              )
+            });
+          }
+        } else {
+          // No subcategory filter, use all category matches
+          const matchingProducts = categoryMatches.filter(item =>
+            offerProductIds.includes(item.product._id.toString())
+          );
+          
+          // Check if cart has required quantity
+          const totalQuantity = matchingProducts.reduce((sum, item) => sum + item.quantity, 0);
+          if (matchingProducts.length > 0 && totalQuantity >= (offer.bundleQuantity || 1)) {
+            applicableOffers.push({
+              offer,
+              matchingProducts: matchingProducts.map(item => ({
+                productId: item.product._id.toString(),
+                productName: item.product.name,
+                quantity: item.quantity
+              })),
+              bundlePrice: offer.bundlePrice,
+              bundleQuantity: offer.bundleQuantity || 1,
+              originalTotal: matchingProducts.reduce((sum, item) => 
+                sum + (item.price * item.quantity), 0
+              )
+            });
+          }
+        }
+      } else {
+        // No category filter, use all matching products
+        const totalQuantity = bundleProductsInCart.reduce((sum, item) => sum + item.quantity, 0);
+        if (bundleProductsInCart.length > 0 && totalQuantity >= (offer.bundleQuantity || 1)) {
+          applicableOffers.push({
+            offer,
+            matchingProducts: bundleProductsInCart.map(item => ({
+              productId: item.product._id.toString(),
+              productName: item.product.name,
+              quantity: item.quantity
+            })),
+            bundlePrice: offer.bundlePrice,
+            bundleQuantity: offer.bundleQuantity || 1,
+            originalTotal: bundleProductsInCart.reduce((sum, item) => 
+              sum + (item.price * item.quantity), 0
+            )
+          });
+        }
+      }
+    }
+
+    res.json({ applicableOffers });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
