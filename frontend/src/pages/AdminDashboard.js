@@ -1405,6 +1405,8 @@ const AdminDashboard = () => {
                     <th>Amount</th>
                     <th>Product Name</th>
                     <th>GetPrint Name</th>
+                    <th>Color</th>
+                    <th>Size</th>
                     <th>Address</th>
                     <th>Payment Status</th>
                     <th>Order Status</th>
@@ -1446,6 +1448,18 @@ const AdminDashboard = () => {
                     // Get unique getPrintNames
                     const uniqueGetPrintNames = [...new Set(getPrintNames)];
                     
+                    // Extract colors from order items
+                    const colors = order.items
+                      ?.map(item => item.color)
+                      .filter(color => color && color.trim() !== '') || [];
+                    const uniqueColors = [...new Set(colors)];
+                    
+                    // Extract sizes from order items
+                    const sizes = order.items
+                      ?.map(item => item.size)
+                      .filter(size => size && size.trim() !== '') || [];
+                    const uniqueSizes = [...new Set(sizes)];
+                    
                     const handleOpenAddress = () => {
                       setSelectedOrderAddress(order.shippingAddress);
                       setShowAddressModal(true);
@@ -1464,6 +1478,16 @@ const AdminDashboard = () => {
                         <td>
                           {uniqueGetPrintNames.length > 0 
                             ? uniqueGetPrintNames.join(', ') 
+                            : 'N/A'}
+                        </td>
+                        <td>
+                          {uniqueColors.length > 0 
+                            ? uniqueColors.join(', ') 
+                            : 'N/A'}
+                        </td>
+                        <td>
+                          {uniqueSizes.length > 0 
+                            ? uniqueSizes.join(', ') 
                             : 'N/A'}
                         </td>
                         <td>
