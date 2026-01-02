@@ -40,6 +40,10 @@ const AdminDashboard = () => {
   const [notes, setNotes] = useState('');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [originalNotes, setOriginalNotes] = useState('');
+  const [allProducts, setAllProducts] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedSubcategory, setSelectedSubcategory] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     fetchDashboardData();
@@ -63,6 +67,10 @@ const AdminDashboard = () => {
     }
     if (activeTab === 'notes') {
       fetchNotes();
+    }
+    if (activeTab === 'allProducts') {
+      fetchAllProducts();
+      fetchCategories();
     }
   }, [activeTab]);
 
@@ -660,6 +668,19 @@ const AdminDashboard = () => {
     }
   };
 
+  const fetchAllProducts = async () => {
+    try {
+      const res = await api.get('/api/admin/products', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      setAllProducts(res.data);
+    } catch (error) {
+      toast.error('Error loading all products');
+    }
+  };
+
   const handleProductFormChange = (e) => {
     const { name, value } = e.target;
     
@@ -1032,6 +1053,12 @@ const AdminDashboard = () => {
             className={activeTab === 'products' ? 'active' : ''}
           >
             Products
+          </button>
+          <button
+            onClick={() => setActiveTab('allProducts')}
+            className={activeTab === 'allProducts' ? 'active' : ''}
+          >
+            All Products
           </button>
           <button
             onClick={() => setActiveTab('trending')}
@@ -2328,6 +2355,238 @@ const AdminDashboard = () => {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'allProducts' && (
+          <div className="all-products-management">
+            <h2>All Products by Category</h2>
+            <p className="all-products-description">
+              Browse all products organized by category (Men, Women, Kids) and subcategory.
+            </p>
+            
+            <div className="search-bar-section">
+              <div className="search-bar-container">
+                <input
+                  type="text"
+                  placeholder="Search products by name, description, or GetPrint name..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="search-input"
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="clear-search-btn"
+                    title="Clear search"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
+            
+            <div className="category-filter-section">
+              <div className="category-buttons">
+                <button
+                  onClick={() => {
+                    setSelectedCategory(null);
+                    setSelectedSubcategory(null);
+                  }}
+                  className={selectedCategory === null ? 'active' : ''}
+                >
+                  All Categories
+                </button>
+                {categories.map((cat) => (
+                  <button
+                    key={cat._id}
+                    onClick={() => {
+                      setSelectedCategory(cat.name);
+                      setSelectedSubcategory(null);
+                    }}
+                    className={selectedCategory === cat.name ? 'active' : ''}
+                  >
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+              
+              {selectedCategory && (() => {
+                const selectedCat = categories.find(cat => cat.name === selectedCategory);
+                const subcategories = selectedCat?.subcategories?.filter(sub => sub.isActive) || [];
+                
+                if (subcategories.length > 0) {
+                  return (
+                    <div className="subcategory-filter-section">
+                      <h4 className="subcategory-filter-title">Subcategories:</h4>
+                      <div className="subcategory-buttons">
+                        <button
+                          onClick={() => setSelectedSubcategory(null)}
+                          className={selectedSubcategory === null ? 'active' : ''}
+                        >
+                          All Subcategories
+                        </button>
+                        {subcategories.map((sub) => (
+                          <button
+                            key={sub._id}
+                            onClick={() => setSelectedSubcategory(sub.slug)}
+                            className={selectedSubcategory === sub.slug ? 'active' : ''}
+                          >
+                            {sub.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+
+            <div className="products-by-category">
+              {(() => {
+                // Filter products by selected category and subcategory
+                let filteredProducts = allProducts;
+                if (selectedCategory) {
+                  filteredProducts = allProducts.filter(p => p.category === selectedCategory);
+                }
+                if (selectedSubcategory) {
+                  filteredProducts = filteredProducts.filter(p => 
+                    p.subcategory === selectedSubcategory || 
+                    p.subcategory.toLowerCase() === selectedSubcategory.toLowerCase()
+                  );
+                }
+                
+                // Filter by search term
+                if (searchTerm.trim()) {
+                  const searchLower = searchTerm.toLowerCase().trim();
+                  filteredProducts = filteredProducts.filter(p => 
+                    p.name?.toLowerCase().includes(searchLower) ||
+                    p.description?.toLowerCase().includes(searchLower) ||
+                    p.getPrintName?.toLowerCase().includes(searchLower) ||
+                    p.category?.toLowerCase().includes(searchLower) ||
+                    p.subcategory?.toLowerCase().includes(searchLower)
+                  );
+                }
+
+                // Group products by category and subcategory
+                const groupedProducts = {};
+                filteredProducts.forEach(product => {
+                  const category = product.category;
+                  const subcategory = product.subcategory;
+                  
+                  if (!groupedProducts[category]) {
+                    groupedProducts[category] = {};
+                  }
+                  if (!groupedProducts[category][subcategory]) {
+                    groupedProducts[category][subcategory] = [];
+                  }
+                  groupedProducts[category][subcategory].push(product);
+                });
+
+                // Get categories to display
+                const categoriesToShow = selectedCategory 
+                  ? [selectedCategory] 
+                  : ['Men', 'Women', 'Kids'];
+
+                if (filteredProducts.length === 0) {
+                  return (
+                    <div className="no-products-message">
+                      <p>No products found{
+                        searchTerm 
+                          ? ` matching "${searchTerm}"`
+                          : selectedCategory 
+                            ? selectedSubcategory 
+                              ? ` in ${selectedCategory} - ${categories.find(cat => cat.name === selectedCategory)?.subcategories?.find(sub => sub.slug === selectedSubcategory)?.name || selectedSubcategory}`
+                              : ` in ${selectedCategory}`
+                            : ''
+                      }.</p>
+                    </div>
+                  );
+                }
+
+                return categoriesToShow.map(categoryName => {
+                  const categoryProducts = groupedProducts[categoryName] || {};
+                  let subcategories = Object.keys(categoryProducts);
+                  
+                  // If a subcategory is selected, only show that subcategory
+                  if (selectedSubcategory) {
+                    subcategories = subcategories.filter(sub => 
+                      sub === selectedSubcategory || sub.toLowerCase() === selectedSubcategory.toLowerCase()
+                    );
+                  }
+                  
+                  if (subcategories.length === 0) {
+                    return null;
+                  }
+
+                  // Get the category object to map subcategory slugs to names
+                  const categoryObj = categories.find(cat => cat.name === categoryName);
+
+                  return (
+                    <div key={categoryName} className="category-section">
+                      <h3 className="category-title">{categoryName}</h3>
+                      {subcategories.map(subcategorySlug => {
+                        const products = categoryProducts[subcategorySlug];
+                        // Find the subcategory name from the category object
+                        const subcategoryObj = categoryObj?.subcategories?.find(
+                          sub => sub.slug === subcategorySlug || sub.slug.toLowerCase() === subcategorySlug.toLowerCase()
+                        );
+                        const subcategoryName = subcategoryObj?.name || subcategorySlug;
+                        
+                        return (
+                          <div key={subcategorySlug} className="subcategory-section">
+                            <h4 className="subcategory-title">{subcategoryName}</h4>
+                            <div className="products-grid-category">
+                              {products.map(product => (
+                                <div key={product._id} className="product-card-category">
+                                  <div className="product-image-category">
+                                    {product.images && product.images[0] ? (
+                                      <img
+                                        src={getImageUrl(product.images[0])}
+                                        alt={product.name}
+                                      />
+                                    ) : (
+                                      <div className="placeholder-image">No Image</div>
+                                    )}
+                                  </div>
+                                  <div className="product-info-category">
+                                    <h5>{product.name}</h5>
+                                    <p className="product-price-category">
+                                      ₹{product.discountPrice || product.price}
+                                      {product.discountPrice && (
+                                        <span className="original-price">₹{product.price}</span>
+                                      )}
+                                    </p>
+                                    <p className="product-getprint-category">
+                                      GetPrint: {product.getPrintName || 'N/A'}
+                                    </p>
+                                  </div>
+                                  <div className="product-actions-category">
+                                    <button
+                                      onClick={() => handleEditProduct(product)}
+                                      className="edit-btn-small"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteProduct(product._id)}
+                                      className="delete-btn-small"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                });
+              })()}
             </div>
           </div>
         )}
