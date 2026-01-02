@@ -176,6 +176,23 @@ router.get('/products', async (req, res) => {
 // Create product
 router.post('/products', async (req, res) => {
   try {
+    // Validate subcategory - ensure it's a valid slug
+    if (req.body.subcategory && req.body.category) {
+      const category = await Category.findOne({ name: req.body.category });
+      if (category) {
+        const validSubcategory = category.subcategories.find(
+          sub => sub.slug === req.body.subcategory.trim()
+        );
+        if (!validSubcategory) {
+          return res.status(400).json({ 
+            message: 'Invalid subcategory. Subcategory must match a valid slug from the category.' 
+          });
+        }
+        // Ensure we use the exact slug from the database
+        req.body.subcategory = validSubcategory.slug;
+      }
+    }
+    
     const product = new Product(req.body);
     await product.save();
     res.status(201).json(product);
@@ -187,6 +204,23 @@ router.post('/products', async (req, res) => {
 // Update product
 router.put('/products/:id', async (req, res) => {
   try {
+    // Validate subcategory - ensure it's a valid slug
+    if (req.body.subcategory && req.body.category) {
+      const category = await Category.findOne({ name: req.body.category });
+      if (category) {
+        const validSubcategory = category.subcategories.find(
+          sub => sub.slug === req.body.subcategory.trim()
+        );
+        if (!validSubcategory) {
+          return res.status(400).json({ 
+            message: 'Invalid subcategory. Subcategory must match a valid slug from the category.' 
+          });
+        }
+        // Ensure we use the exact slug from the database
+        req.body.subcategory = validSubcategory.slug;
+      }
+    }
+    
     const product = await Product.findByIdAndUpdate(
       req.params.id,
       { ...req.body, updatedAt: new Date() },

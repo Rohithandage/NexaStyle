@@ -44,7 +44,7 @@ const getColorValue = (colorName) => {
 
 const Products = () => {
   const { category } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
@@ -82,6 +82,8 @@ const Products = () => {
     }
     // Reset to page 1 when subcategory changes
     setPage(1);
+    // Clear products when subcategory changes to prevent showing stale data
+    setProducts([]);
   }, [searchParams, category]);
 
   useEffect(() => {
@@ -102,7 +104,16 @@ const Products = () => {
     try {
       const params = { page, limit: 12 };
       if (category) params.category = category;
-      if (selectedSubcategory) params.subcategory = selectedSubcategory;
+      
+      // Always use URL parameter as source of truth for subcategory
+      const subcategoryFromUrl = searchParams.get('subcategory');
+      if (subcategoryFromUrl && subcategoryFromUrl.trim()) {
+        params.subcategory = subcategoryFromUrl.trim();
+      } else if (selectedSubcategory && selectedSubcategory.trim()) {
+        // Fallback to state if URL doesn't have it
+        params.subcategory = selectedSubcategory.trim();
+      }
+      
       const searchQuery = searchParams.get('search');
       if (searchQuery) params.search = searchQuery;
 
@@ -236,7 +247,13 @@ const Products = () => {
               <h3>Subcategories</h3>
               <div className="subcategory-list">
                 <button
-                  onClick={() => setSelectedSubcategory('')}
+                  onClick={() => {
+                    setSelectedSubcategory('');
+                    const newSearchParams = new URLSearchParams(searchParams);
+                    newSearchParams.delete('subcategory');
+                    setSearchParams(newSearchParams);
+                    setPage(1);
+                  }}
                   className={!selectedSubcategory ? 'active' : ''}
                 >
                   All
@@ -244,7 +261,13 @@ const Products = () => {
                 {subcategories.map((sub) => (
                   <button
                     key={sub._id}
-                    onClick={() => setSelectedSubcategory(sub.slug)}
+                    onClick={() => {
+                      setSelectedSubcategory(sub.slug);
+                      const newSearchParams = new URLSearchParams(searchParams);
+                      newSearchParams.set('subcategory', sub.slug);
+                      setSearchParams(newSearchParams);
+                      setPage(1);
+                    }}
                     className={selectedSubcategory === sub.slug ? 'active' : ''}
                   >
                     {sub.name}
@@ -297,6 +320,10 @@ const Products = () => {
                     <button
                       onClick={() => {
                         setSelectedSubcategory('');
+                        const newSearchParams = new URLSearchParams(searchParams);
+                        newSearchParams.delete('subcategory');
+                        setSearchParams(newSearchParams);
+                        setPage(1);
                         setShowMobileFilters(false);
                       }}
                       className={`mobile-subcategory-item ${!selectedSubcategory ? 'active' : ''}`}
@@ -308,6 +335,10 @@ const Products = () => {
                         key={sub._id}
                         onClick={() => {
                           setSelectedSubcategory(sub.slug);
+                          const newSearchParams = new URLSearchParams(searchParams);
+                          newSearchParams.set('subcategory', sub.slug);
+                          setSearchParams(newSearchParams);
+                          setPage(1);
                           setShowMobileFilters(false);
                         }}
                         className={`mobile-subcategory-item ${selectedSubcategory === sub.slug ? 'active' : ''}`}

@@ -11,7 +11,14 @@ router.get('/', async (req, res) => {
     const query = { isActive: true };
     
     if (category) query.category = category;
-    if (subcategory) query.subcategory = subcategory;
+    
+    // Ensure exact match for subcategory
+    if (subcategory) {
+      const subcategorySlug = subcategory.trim();
+      // Use exact match - this ensures only products with this exact subcategory slug are returned
+      query.subcategory = subcategorySlug;
+    }
+    
     if (trending === 'true') query.isTrending = true;
     
     // Add search functionality
