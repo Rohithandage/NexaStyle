@@ -11,9 +11,13 @@
   transition: top 0.3s ease;
 }
 
-/* Adjust navbar position when offer banner is visible - use CSS variable for exact height */
+/* Adjust navbar position when offer banner is visible - attach directly to offer card */
 body.has-offer-banner .navbar {
   top: var(--offer-banner-height, 60px); /* Use dynamically calculated height */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-top: none; /* Remove any border to make it seamless */
+  margin-top: 0; /* Ensure no gap */
+  border-radius: 0 0 0 0; /* No rounded corners on top when attached */
 }
 
 .navbar-container {

@@ -115,7 +115,6 @@ const ProductDetail = () => {
   const [isImageZoomed, setIsImageZoomed] = useState(false);
   const [hasCartItems, setHasCartItems] = useState(false);
   const [offers, setOffers] = useState([]);
-  const [dismissedOffers, setDismissedOffers] = useState([]);
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponError, setCouponError] = useState('');
@@ -211,11 +210,20 @@ const ProductDetail = () => {
 
   const fetchOffers = async () => {
     try {
-      const res = await api.get('/api/settings/offers');
+      // Fetch all active offers including bundle/carousel offers
+      const res = await api.get('/api/settings/offers?includeAll=true');
       setOffers(res.data.offers || []);
       checkAppliedCoupon();
     } catch (error) {
       console.error('Error fetching offers:', error);
+      // Fallback to regular offers endpoint
+      try {
+        const res = await api.get('/api/settings/offers');
+        setOffers(res.data.offers || []);
+        checkAppliedCoupon();
+      } catch (fallbackError) {
+        console.error('Error fetching offers (fallback):', fallbackError);
+      }
     }
   };
 
@@ -238,10 +246,6 @@ const ProductDetail = () => {
     }
   };
 
-  const handleDismissOffer = (offerId) => {
-    setDismissedOffers([...dismissedOffers, offerId]);
-  };
-
   // Color gradients for offer cards
   const offerColors = [
     'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -258,9 +262,38 @@ const ProductDetail = () => {
     return offerColors[index % offerColors.length];
   };
 
-  const visibleOffers = offers.filter(
-    offer => offer.isActive && !dismissedOffers.includes(offer._id)
-  );
+  // Filter to get only carousel offers for this product
+  const carouselOffers = offers.filter(offer => {
+    if (!offer.isActive || offer.offerType !== 'carousel') {
+      return false;
+    }
+    
+    // Check if product is in this carousel offer
+    if (!product || !product._id) {
+      return false;
+    }
+    
+    const productIdStr = product._id.toString();
+    
+    // Check if product is in the carousel's productIds
+    if (offer.carouselId && offer.carouselId.productIds) {
+      const productIds = Array.isArray(offer.carouselId.productIds) 
+        ? offer.carouselId.productIds 
+        : [];
+      
+      return productIds.some(pId => {
+        const id = pId._id ? pId._id.toString() : pId.toString();
+        return id === productIdStr;
+      });
+    }
+    
+    // Also check if product is in the offer's products array (fallback)
+    if (offer.products && Array.isArray(offer.products)) {
+      return offer.products.some(pId => pId.toString() === productIdStr);
+    }
+    
+    return false;
+  });
 
   const handleApplyCoupon = (code = null) => {
     setCouponError('');
@@ -375,6 +408,33 @@ const ProductDetail = () => {
     <div className="product-detail">
       <div className="product-detail-container">
         <div className="product-images">
+          {/* Carousel Offers Section - Only show for products in carousel */}
+          {carouselOffers.length > 0 && (
+            <div className="offers-section-product-image">
+              <div className="offers-container-product-image">
+                {carouselOffers.map((offer, index) => {
+                  const isApplied = appliedCoupon && appliedCoupon.code.toUpperCase() === offer.code.toUpperCase();
+                  return (
+                    <div
+                      key={offer._id}
+                      className={`offer-card-product-image ${isApplied ? 'applied' : ''}`}
+                      style={{ background: getOfferColor(index) }}
+                    >
+                      <div className="offer-content-product-image">
+                        <div className="offer-code-product-image">{offer.code}</div>
+                        <div className="offer-discount-product-image">
+                          {offer.carouselDisplayText || 'Special Offer'}
+                        </div>
+                        {offer.description && (
+                          <div className="offer-description-product-image">{offer.description}</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {(() => {
             // Collect all images: general product images + all color-specific images
             // Keep original image paths (not optimized URLs) for flexibility
@@ -613,45 +673,6 @@ const ProductDetail = () => {
               <button onClick={() => setQuantity(quantity + 1)}>+</button>
             </div>
           </div>
-
-          {/* Offers Section */}
-          {visibleOffers.length > 0 && (
-            <div className="offers-section-product">
-              <h3>🎉 Special Offers</h3>
-              <div className="offers-container-product">
-                {visibleOffers.map((offer, index) => {
-                  const isApplied = appliedCoupon && appliedCoupon.code.toUpperCase() === offer.code.toUpperCase();
-                  return (
-                    <div
-                      key={offer._id}
-                      className={`offer-card-product ${isApplied ? 'applied' : ''}`}
-                      style={{ background: getOfferColor(index) }}
-                    >
-                      <div className="offer-content-product">
-                        <div className="offer-code-product">{offer.code}</div>
-                        <div className="offer-discount-product">
-                          {offer.discountType === 'percentage' ? (
-                            <span>{offer.discount}% OFF</span>
-                          ) : (
-                            <span>₹{offer.discount} OFF</span>
-                          )}
-                        </div>
-                        {offer.description && (
-                          <div className="offer-description-product">{offer.description}</div>
-                        )}
-                      <button
-                        className={`offer-apply-btn-product ${isApplied ? 'applied' : ''}`}
-                        onClick={() => handleApplyOffer(offer)}
-                      >
-                        {isApplied ? 'Remove' : 'Apply'}
-                      </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           <button
             onClick={handleAddToCart}

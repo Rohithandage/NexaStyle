@@ -10,7 +10,7 @@ const offerSchema = new mongoose.Schema({
   },
   offerType: {
     type: String,
-    enum: ['coupon', 'bundle'],
+    enum: ['coupon', 'bundle', 'carousel'],
     default: 'coupon'
   },
   discount: {
@@ -61,6 +61,18 @@ const offerSchema = new mongoose.Schema({
     }
   },
   bundleDisplayText: {
+    type: String,
+    trim: true
+  },
+  // Carousel offer fields
+  carouselId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'CarouselItem',
+    required: function() {
+      return this.offerType === 'carousel';
+    }
+  },
+  carouselDisplayText: {
     type: String,
     trim: true
   },

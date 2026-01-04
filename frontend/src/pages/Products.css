@@ -1,6 +1,10 @@
 .products-page {
   min-height: 100vh;
   padding: 2rem 0;
+  position: relative;
+  z-index: 1;
+  margin-top: 0;
+  padding-top: 2rem;
 }
 
 .products-container {
@@ -10,6 +14,8 @@
   display: grid;
   grid-template-columns: 250px 1fr;
   gap: 2rem;
+  position: relative;
+  z-index: 2;
 }
 
 .products-sidebar {
@@ -107,6 +113,23 @@
   padding: 0;
   margin: 0;
   border-radius: 8px 8px 0 0;
+}
+
+.offer-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
+  color: white;
+  padding: 0.4rem 0.7rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 .product-image img {
@@ -629,12 +652,16 @@
 @media (max-width: 768px) {
   .products-page {
     padding: 1rem 0;
+    padding-top: 1.5rem;
+    min-height: calc(100vh - 180px);
   }
 
   .products-container {
     grid-template-columns: 1fr;
     padding: 0;
     gap: 0;
+    margin-top: 0.5rem;
+    z-index: 2;
   }
 
   .products-sidebar {
@@ -653,7 +680,11 @@
   .products-content h1 {
     font-size: 1.25rem;
     margin-bottom: 1rem;
-    padding: 0 0.25rem;
+    padding: 0.75rem 0.25rem 0;
+    margin-top: 0.5rem;
+    line-height: 1.3;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
 
   .products-grid {
@@ -677,6 +708,13 @@
     border-radius: 6px 6px 0 0;
   }
 
+  .offer-badge {
+    top: 6px;
+    right: 6px;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.65rem;
+  }
+
   .product-card:hover .product-image img {
     transform: none;
   }
@@ -698,9 +736,11 @@
 
   .product-name {
     font-size: 0.75rem;
-    line-height: 1.3;
+    line-height: 1.4;
     margin-bottom: 0.3rem;
     -webkit-line-clamp: 2;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
 
   .product-description {
@@ -723,6 +763,7 @@
     font-weight: 500;
     color: #0F1111;
     line-height: 1.2;
+    word-wrap: break-word;
   }
 
   .mrp-price {
@@ -732,12 +773,14 @@
     white-space: nowrap;
     display: inline-block;
     font-weight: 500;
+    word-wrap: break-word;
   }
 
   .discount-percent {
     font-size: 0.75rem;
     color: #22c55e;
     font-weight: 500;
+    word-wrap: break-word;
   }
 
   .free-delivery-text {
@@ -773,6 +816,51 @@
     padding: 0.65rem 1.25rem;
     font-size: 0.85rem;
     border-radius: 20px;
+    word-wrap: break-word;
+  }
+
+  .mobile-category-section h3,
+  .mobile-subcategory-section h3 {
+    word-wrap: break-word;
+    line-height: 1.4;
+  }
+
+  .mobile-category-item,
+  .mobile-subcategory-item {
+    word-wrap: break-word;
+    line-height: 1.5;
+  }
+
+  .no-products {
+    padding: 3rem 1.5rem;
+    word-wrap: break-word;
+    line-height: 1.6;
+  }
+}
+
+@media (max-width: 480px) {
+  .products-page {
+    padding-top: 1.25rem;
+    min-height: calc(100vh - 170px);
+  }
+
+  .products-container {
+    margin-top: 0.5rem;
+  }
+
+  .products-content h1 {
+    font-size: 1.15rem;
+    padding-top: 0.75rem;
+    margin-top: 0.5rem;
+  }
+
+  .product-name {
+    font-size: 0.7rem;
+    line-height: 1.3;
+  }
+
+  .current-price {
+    font-size: 1.1rem;
   }
 }
 

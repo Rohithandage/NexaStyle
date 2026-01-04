@@ -2,13 +2,22 @@ const express = require('express');
 const router = express.Router();
 const Product = require('../models/Product');
 const Category = require('../models/Category');
+const Offer = require('../models/Offer');
 const { auth } = require('../middleware/auth');
 
 // Get all products
 router.get('/', async (req, res) => {
   try {
-    const { category, subcategory, page = 1, limit = 12, trending, search } = req.query;
+    const { category, subcategory, page = 1, limit = 12, trending, search, productIds } = req.query;
     const query = { isActive: true };
+    
+    // Filter by product IDs (for carousel items)
+    if (productIds) {
+      const ids = productIds.split(',').map(id => id.trim()).filter(id => id);
+      if (ids.length > 0) {
+        query._id = { $in: ids };
+      }
+    }
     
     if (category) query.category = category;
     
@@ -494,6 +503,48 @@ router.get('/', async (req, res) => {
     const total = await Product.countDocuments(query);
     const actualProducts = hasExactMatches ? products : (fallbackProducts.length > 0 ? fallbackProducts : products);
 
+    // Check for active offers (bundle and carousel) that include these products
+    try {
+      const CarouselItem = require('../models/CarouselItem');
+      const activeOffers = await Offer.find({
+        offerType: { $in: ['bundle', 'carousel'] },
+        isActive: true
+      }).populate('carouselId', 'productIds');
+      
+      // Create a Set of product IDs that have offers
+      const productIdsWithOffers = new Set();
+      activeOffers.forEach(offer => {
+        // Check products array (for both bundle and carousel offers)
+        if (offer.products && Array.isArray(offer.products)) {
+          offer.products.forEach(productId => {
+            productIdsWithOffers.add(productId.toString());
+          });
+        }
+        // For carousel offers, also check the carousel item's productIds
+        if (offer.offerType === 'carousel' && offer.carouselId && offer.carouselId.productIds) {
+          const carouselProductIds = Array.isArray(offer.carouselId.productIds) 
+            ? offer.carouselId.productIds 
+            : [];
+          carouselProductIds.forEach(productId => {
+            const id = productId._id ? productId._id.toString() : productId.toString();
+            productIdsWithOffers.add(id);
+          });
+        }
+      });
+      
+      // Add hasOffer flag to each product
+      const productsWithOfferInfo = actualProducts.map(product => {
+        const productObj = product.toObject ? product.toObject() : product;
+        productObj.hasOffer = productIdsWithOffers.has(productObj._id.toString());
+        return productObj;
+      });
+      
+      actualProducts.splice(0, actualProducts.length, ...productsWithOfferInfo);
+    } catch (offerError) {
+      // If offer check fails, continue without offer info
+      console.error('Error checking offers:', offerError);
+    }
+
     // Track search analytics (basic tracking)
     if (search) {
       try {
@@ -526,7 +577,48 @@ router.get('/:id', async (req, res) => {
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
-    res.json(product);
+    
+    // Check if product has an active offer
+    try {
+      const CarouselItem = require('../models/CarouselItem');
+      const activeOffers = await Offer.find({
+        offerType: { $in: ['bundle', 'carousel'] },
+        isActive: true
+      }).populate('carouselId', 'productIds');
+      
+      let hasOffer = false;
+      const productIdStr = product._id.toString();
+      for (const offer of activeOffers) {
+        // Check products array (for both bundle and carousel offers)
+        if (offer.products && Array.isArray(offer.products)) {
+          if (offer.products.some(pId => pId.toString() === productIdStr)) {
+            hasOffer = true;
+            break;
+          }
+        }
+        // For carousel offers, also check the carousel item's productIds
+        if (!hasOffer && offer.offerType === 'carousel' && offer.carouselId && offer.carouselId.productIds) {
+          const carouselProductIds = Array.isArray(offer.carouselId.productIds) 
+            ? offer.carouselId.productIds 
+            : [];
+          if (carouselProductIds.some(pId => {
+            const id = pId._id ? pId._id.toString() : pId.toString();
+            return id === productIdStr;
+          })) {
+            hasOffer = true;
+            break;
+          }
+        }
+      }
+      
+      const productObj = product.toObject ? product.toObject() : product;
+      productObj.hasOffer = hasOffer;
+      res.json(productObj);
+    } catch (offerError) {
+      // If offer check fails, return product without offer info
+      console.error('Error checking offers:', offerError);
+      res.json(product);
+    }
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }

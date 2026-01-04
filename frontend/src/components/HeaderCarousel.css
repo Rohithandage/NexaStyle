@@ -39,6 +39,19 @@
   background-color: #f2f2f2;
 }
 
+.hero-image.no-click {
+  cursor: default;
+  pointer-events: none;
+}
+
+.hero-image.clickable {
+  cursor: pointer;
+}
+
+.hero-wrapper.clickable-wrapper {
+  cursor: pointer;
+}
+
 @media (min-width: 769px) {
   .hero-image {
     object-fit: contain; /* Show full image on desktop without cropping */
@@ -72,6 +85,26 @@
   contain: layout style paint;
   /* Reserve space immediately to prevent CLS */
   display: block;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s ease;
+  z-index: 10;
+  /* Ensure it's positioned relative to hero-wrapper */
+  position: absolute;
+}
+
+.carousel-container.carousel-visible {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  z-index: 5;
+}
+
+.carousel-container.carousel-hidden {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  z-index: 1;
 }
 
 @media (min-width: 769px) {
@@ -103,6 +136,19 @@
   object-fit: cover;
   object-position: center;
   display: block;
+}
+
+.carousel-image.no-click {
+  cursor: default;
+  pointer-events: none;
+}
+
+.carousel-image.clickable {
+  cursor: pointer;
+}
+
+.carousel-slide.clickable-wrapper {
+  cursor: pointer;
 }
 
 @media (min-width: 769px) {
@@ -153,19 +199,21 @@
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  display: flex;
-  gap: 10px;
+  display: none; /* Dots removed from carousel */
+  gap: 8px;
   z-index: 10;
   /* Reserve space to prevent CLS */
-  min-height: 12px;
+  min-height: 8px;
   padding: 4px 0;
 }
 
+/* Dots are hidden, button stays at bottom */
+
 .carousel-dot {
-  width: 12px;
-  height: 12px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  border: 2px solid white;
+  border: 1.5px solid white;
   background: rgba(255, 255, 255, 0.5);
   cursor: pointer;
   transition: all 0.3s;
@@ -210,6 +258,22 @@
   .header-carousel {
     margin-top: 0; /* Padding handled by main-content */
   }
+
+  .carousel-button {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    font-size: 1rem;
+  }
+
+  .carousel-button-left {
+    left: 8px;
+  }
+
+  .carousel-button-right {
+    right: 8px;
+  }
 }
 
 @media (min-width: 769px) {
@@ -221,6 +285,72 @@
 @media (min-width: 1200px) {
   .header-carousel {
     margin-top: 2rem;
+  }
+}
+
+/* Carousel CTA Button Overlay */
+.carousel-cta-overlay {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.carousel-cta-button {
+  background: rgba(255, 255, 255, 0.95);
+  color: #333;
+  border: 2px solid #333;
+  padding: 14px 32px;
+  font-size: 16px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+  pointer-events: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 140px;
+}
+
+.carousel-cta-button:hover {
+  background: #333;
+  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+
+.carousel-cta-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+@media (max-width: 768px) {
+  .carousel-cta-overlay {
+    bottom: 15px;
+  }
+
+  .carousel-cta-button {
+    padding: 12px 24px;
+    font-size: 14px;
+    min-width: 120px;
+  }
+}
+
+@media (max-width: 480px) {
+  .carousel-cta-overlay {
+    bottom: 10px;
+  }
+
+  .carousel-cta-button {
+    padding: 10px 20px;
+    font-size: 13px;
+    min-width: 100px;
   }
 }
 

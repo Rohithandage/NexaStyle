@@ -55,6 +55,8 @@ const Home = () => {
   const [offers, setOffers] = useState([]);
   const [dismissedOffers, setDismissedOffers] = useState([]);
   const [appliedCouponCode, setAppliedCouponCode] = useState(null);
+  const [showOfferModal, setShowOfferModal] = useState(false);
+  const [selectedOffer, setSelectedOffer] = useState(null);
 
   useEffect(() => {
     fetchTrendingProducts();
@@ -132,9 +134,90 @@ const Home = () => {
   const fetchHeaderImages = async () => {
     try {
       const res = await api.get('/api/settings/header-images');
-      setHeaderImages(res.data.headerImages || []);
+      console.log('Header images API response:', res.data);
+      
+      // Use carouselItems if available (new format), otherwise fallback to headerImages
+      if (res.data.carouselItems && res.data.carouselItems.length > 0) {
+        console.log('Found carouselItems:', res.data.carouselItems.length);
+        console.log('Raw carouselItems:', res.data.carouselItems);
+        
+        // Format carouselItems to ensure productIds are properly formatted
+        const formattedCarouselItems = res.data.carouselItems
+          .filter(item => {
+            // Filter out items without imageUrl
+            if (!item.imageUrl || !item.imageUrl.trim()) {
+              console.warn('Carousel item missing imageUrl:', item);
+              return false;
+            }
+            const url = item.imageUrl.trim();
+            // Accept any non-empty URL - let the image loading handle validation
+            // This allows Cloudinary URLs, http/https URLs, and relative paths
+            if (url.length > 0) {
+              console.log('Carousel item has valid URL:', url.substring(0, 100));
+              return true;
+            }
+            console.warn('Carousel item has empty imageUrl:', item);
+            return false;
+          })
+          .map(item => {
+            const formattedItem = {
+              imageUrl: item.imageUrl.trim(),
+              name: item.name || 'Carousel Item',
+              buttonText: item.buttonText || 'Shop Now', // Use item's buttonText or default
+              productIds: item.productIds ? item.productIds.map(p => {
+                // Handle both populated objects and ID strings
+                if (typeof p === 'object' && p._id) {
+                  return p._id.toString();
+                }
+                return p.toString();
+              }).filter(id => id) : [],
+              _id: item._id
+            };
+            console.log('Formatted item buttonText:', formattedItem.name, '->', formattedItem.buttonText);
+            return formattedItem;
+          });
+        console.log('Formatted carousel items:', formattedCarouselItems);
+        console.log('Setting headerImages with', formattedCarouselItems.length, 'items');
+        if (formattedCarouselItems.length === 0) {
+          console.warn('WARNING: No valid carousel items after filtering! Check image URLs.');
+          console.warn('Raw carouselItems that were filtered:', res.data.carouselItems);
+        } else {
+          // Log the image URLs to help debug
+          formattedCarouselItems.forEach((item, index) => {
+            console.log(`Carousel item ${index + 1}:`, {
+              name: item.name,
+              buttonText: item.buttonText,
+              imageUrl: item.imageUrl,
+              productIdsCount: item.productIds.length
+            });
+          });
+        }
+        setHeaderImages(formattedCarouselItems);
+      } else if (res.data.headerImages && res.data.headerImages.length > 0) {
+        console.log('Using fallback headerImages:', res.data.headerImages.length);
+        // Convert old format (array of strings) to new format (array of objects)
+        const oldImages = res.data.headerImages || [];
+        const formattedImages = oldImages
+          .filter(img => {
+            const url = typeof img === 'string' ? img : (img.imageUrl || img);
+            return url && url.trim() !== '';
+          })
+          .map(img => ({
+            imageUrl: typeof img === 'string' ? img : (img.imageUrl || img),
+            name: typeof img === 'string' ? 'Carousel Item' : (img.name || 'Carousel Item'),
+            buttonText: typeof img === 'string' ? 'Shop Now' : (img.buttonText || 'Shop Now'),
+            productIds: typeof img === 'string' ? [] : (img.productIds || [])
+          }));
+        console.log('Formatted header images:', formattedImages);
+        setHeaderImages(formattedImages);
+      } else {
+        console.warn('No carousel items or header images found in response');
+        setHeaderImages([]);
+      }
     } catch (error) {
       console.error('Error fetching header images:', error);
+      console.error('Error details:', error.response?.data || error.message);
+      setHeaderImages([]);
     }
   };
 
@@ -167,7 +250,7 @@ const Home = () => {
       e.stopPropagation();
     }
     
-    // Check if already applied - toggle it off
+    // Check if already applied - toggle it off (allow removal even if not logged in)
     if (appliedCouponCode && appliedCouponCode.toUpperCase() === offer.code.toUpperCase()) {
       // Remove the coupon
       localStorage.removeItem('pendingCouponCode');
@@ -177,24 +260,35 @@ const Home = () => {
       return;
     }
     
-    // Apply the coupon
-    localStorage.setItem('pendingCouponCode', offer.code);
-    setAppliedCouponCode(offer.code);
-    window.dispatchEvent(new Event('couponApplied'));
+    // Show modal popup when clicking apply
+    setSelectedOffer(offer);
+    setShowOfferModal(true);
+  };
+
+  const handleConfirmApplyOffer = () => {
+    if (!selectedOffer) return;
     
-    // Only show toast if navigating to checkout, otherwise apply silently
-    if (isAuthenticated) {
-      // Check if user has items in cart
-      if (hasCartItems) {
-        navigate('/checkout');
-        // Don't show toast - will be applied silently in checkout
-      } else {
-        // Store coupon for when items are added to cart - show minimal feedback
-        toast.success(`Coupon ${offer.code} saved!`);
-      }
+    // Check if user is authenticated before applying offer
+    if (!isAuthenticated) {
+      setShowOfferModal(false);
+      toast.info('Please login to apply this offer');
+      navigate('/login');
+      return;
+    }
+    
+    // Apply the coupon (only if authenticated)
+    localStorage.setItem('pendingCouponCode', selectedOffer.code);
+    setAppliedCouponCode(selectedOffer.code);
+    window.dispatchEvent(new Event('couponApplied'));
+    setShowOfferModal(false);
+    
+    // Check if user has items in cart
+    if (hasCartItems) {
+      navigate('/checkout');
+      // Don't show toast - will be applied silently in checkout
     } else {
-      // Store coupon even if not logged in - show minimal feedback
-      toast.success(`Coupon ${offer.code} saved!`);
+      // Store coupon for when items are added to cart - show minimal feedback
+      toast.success(`Coupon ${selectedOffer.code} saved!`);
     }
   };
 
@@ -453,16 +547,85 @@ const Home = () => {
 
   return (
     <div className="home-page-wrapper">
+      {/* Offer Modal Popup */}
+      {showOfferModal && selectedOffer && (
+        <div 
+          className="offer-modal-overlay" 
+          onClick={() => setShowOfferModal(false)}
+        >
+          <div 
+            className="offer-modal-content" 
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: getOfferColor(offers.indexOf(selectedOffer)) }}
+          >
+            <div className="offer-modal-header">
+              <h3>🎉 Special Offer</h3>
+              <button 
+                className="offer-modal-close"
+                onClick={() => setShowOfferModal(false)}
+                aria-label="Close modal"
+              >
+                ×
+              </button>
+            </div>
+            <div className="offer-modal-body">
+              <div className="offer-modal-discount">
+                {selectedOffer.offerType === 'bundle' ? (
+                  selectedOffer.bundleDisplayText || `${selectedOffer.bundleQuantity || 'X'} products at ₹${selectedOffer.bundlePrice || '0'}`
+                ) : (
+                  selectedOffer.couponDisplayText || 
+                  (selectedOffer.discountType === 'percentage' 
+                    ? `${selectedOffer.discount}% OFF` 
+                    : `₹${selectedOffer.discount} OFF`)
+                )}
+              </div>
+              <div className="offer-modal-code-section">
+                <span className="offer-modal-code-label">Use Code:</span>
+                <span className="offer-modal-code">{selectedOffer.code}</span>
+              </div>
+              {selectedOffer.description && (
+                <div className="offer-modal-description">{selectedOffer.description}</div>
+              )}
+              {!isAuthenticated && (
+                <div className="offer-modal-login-prompt">
+                  <p>🔒 Please login to apply this offer</p>
+                </div>
+              )}
+            </div>
+            <div className="offer-modal-footer">
+              <button 
+                className="offer-modal-cancel-btn"
+                onClick={() => setShowOfferModal(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="offer-modal-apply-btn"
+                onClick={handleConfirmApplyOffer}
+              >
+                {isAuthenticated ? 'Apply Offer' : 'Login to Apply'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Offer Card Banner at the top */}
       {activeOffer && (
         <div 
           className="home-offer-banner"
           style={{ background: getOfferColor(offers.indexOf(activeOffer)) }}
-          onClick={() => handleApplyOffer(activeOffer)}
         >
-          <div className="home-offer-content">
-            <div className={`home-offer-badge ${isOfferApplied ? 'applied' : ''}`}>
-              {isOfferApplied ? '✅ Applied' : '🎉 Special Offer'}
+          <div className="home-offer-sparkles">
+            <span className="sparkle sparkle-1">✨</span>
+            <span className="sparkle sparkle-2">⭐</span>
+            <span className="sparkle sparkle-3">💫</span>
+          </div>
+          <div className="home-offer-content" onClick={() => handleApplyOffer(activeOffer)}>
+            <div className="home-offer-icon-wrapper">
+              <div className={`home-offer-icon ${isOfferApplied ? 'applied' : ''}`}>
+                {isOfferApplied ? '✓' : '🎁'}
+              </div>
             </div>
             <div className="home-offer-main">
               <div className="home-offer-discount-wrapper">
@@ -476,12 +639,11 @@ const Home = () => {
                       : `₹${activeOffer.discount} OFF`)
                   )}
                 </span>
-                <span className="home-offer-code-label">Use Code:</span>
-                <span className="home-offer-code">{activeOffer.code}</span>
+                <div className="home-offer-code-container">
+                  <span className="home-offer-code-label">CODE:</span>
+                  <span className="home-offer-code">{activeOffer.code}</span>
+                </div>
               </div>
-              {activeOffer.description && (
-                <div className="home-offer-description">{activeOffer.description}</div>
-              )}
             </div>
           </div>
           <div className="home-offer-actions">
@@ -490,7 +652,8 @@ const Home = () => {
               onClick={(e) => handleApplyOffer(activeOffer, e)}
               aria-label={isOfferApplied ? "Remove offer" : "Apply offer"}
             >
-              {isOfferApplied ? 'Remove' : 'Apply'}
+              <span className="btn-text">{isOfferApplied ? '✓ Applied' : 'Apply Now'}</span>
+              {!isOfferApplied && <span className="btn-arrow">→</span>}
             </button>
             <button 
               className="home-offer-close"
@@ -506,6 +669,7 @@ const Home = () => {
         </div>
       )}
       {/* Always render carousel container to reserve space, even when loading */}
+      {console.log('Passing headerImages to HeaderCarousel:', headerImages)}
       <HeaderCarousel images={headerImages} />
       <div className="home">
         <section className="trending-section">
@@ -525,6 +689,9 @@ const Home = () => {
                 <div key={product._id} className="product-card">
                   <Link to={`/product/${product._id}`} className="product-card-link">
                     <div className="product-image">
+                      {product.hasOffer && (
+                        <div className="offer-badge">OFFER</div>
+                      )}
                       {product.images && product.images[0] ? (
                         <img 
                           src={getOptimizedImageUrl(product.images[0], 'product-list')} 
@@ -629,6 +796,9 @@ const Home = () => {
               <div key={product._id} className="product-card">
                 <Link to={`/product/${product._id}`} className="product-card-link">
                   <div className="product-image">
+                    {product.hasOffer && (
+                      <div className="offer-badge">OFFER</div>
+                    )}
                     {product.images && product.images[0] ? (
                       <img 
                         src={getOptimizedImageUrl(product.images[0], 'product-list')} 

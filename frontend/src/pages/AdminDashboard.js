@@ -21,6 +21,10 @@ const AdminDashboard = () => {
   const [showProductForm, setShowProductForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [headerImages, setHeaderImages] = useState([]);
+  const [carouselItems, setCarouselItems] = useState([]);
+  const [editingCarouselItem, setEditingCarouselItem] = useState(null);
+  const [showCarouselItemForm, setShowCarouselItemForm] = useState(false);
+  const [selectedProductsForCarousel, setSelectedProductsForCarousel] = useState([]);
   const [logo, setLogo] = useState(null);
   const [productForm, setProductForm] = useState({
     name: '',
@@ -65,7 +69,10 @@ const AdminDashboard = () => {
     products: [],
     bundlePrice: '',
     bundleQuantity: '',
-    bundleDisplayText: ''
+    bundleDisplayText: '',
+    // Carousel offer fields
+    carouselId: '',
+    carouselDisplayText: ''
   });
   const [selectedCategoryForOffer, setSelectedCategoryForOffer] = useState('');
   const [selectedSubcategoriesForOffer, setSelectedSubcategoriesForOffer] = useState([]);
@@ -78,6 +85,10 @@ const AdminDashboard = () => {
     fetchPendingReviews();
     if (activeTab === 'images') {
       fetchImages();
+      fetchProducts(); // Fetch products to filter out product images
+      fetchHeaderImages();
+      fetchCarouselItems();
+      fetchLogo();
     }
     if (activeTab === 'products') {
       fetchProducts();
@@ -86,10 +97,6 @@ const AdminDashboard = () => {
     }
     if (activeTab === 'trending') {
       fetchProducts();
-    }
-    if (activeTab === 'images') {
-      fetchHeaderImages();
-      fetchLogo();
     }
     if (activeTab === 'notes') {
       fetchNotes();
@@ -121,15 +128,27 @@ const AdminDashboard = () => {
 
   // Fetch products and categories when offer form is opened
   useEffect(() => {
-    if (showOfferForm && offerForm.offerType === 'bundle') {
+    if (showOfferForm && (offerForm.offerType === 'bundle' || offerForm.offerType === 'carousel')) {
       if (allProducts.length === 0) {
         fetchAllProducts();
       }
       if (categories.length === 0) {
         fetchCategories();
       }
+      if (offerForm.offerType === 'carousel' && carouselItems.length === 0) {
+        fetchCarouselItems();
+      }
     }
   }, [showOfferForm, offerForm.offerType]);
+
+  // Fetch products when carousel item form is opened
+  useEffect(() => {
+    if (showCarouselItemForm) {
+      if (allProducts.length === 0) {
+        fetchAllProducts();
+      }
+    }
+  }, [showCarouselItemForm]);
 
   // Auto-select products when subcategories change or products are loaded
   useEffect(() => {
@@ -150,6 +169,27 @@ const AdminDashboard = () => {
       setSelectedProductsForOffer([]);
     }
   }, [selectedSubcategoriesForOffer, allProducts.length]);
+
+  // Auto-populate products when carousel is selected
+  useEffect(() => {
+    if (showOfferForm && offerForm.offerType === 'carousel' && offerForm.carouselId && carouselItems.length > 0) {
+      const selectedCarousel = carouselItems.find(item => item._id === offerForm.carouselId);
+      if (selectedCarousel && selectedCarousel.productIds) {
+        // Extract product IDs from carousel item
+        let productIds = selectedCarousel.productIds || [];
+        if (productIds.length > 0 && typeof productIds[0] === 'object' && productIds[0]._id) {
+          productIds = productIds.map(p => p._id || p);
+        }
+        // Convert to strings for comparison
+        const productIdStrings = productIds.map(id => id.toString());
+        setSelectedProductsForOffer(productIdStrings);
+      } else {
+        setSelectedProductsForOffer([]);
+      }
+    } else if (showOfferForm && offerForm.offerType === 'carousel' && !offerForm.carouselId) {
+      setSelectedProductsForOffer([]);
+    }
+  }, [showOfferForm, offerForm.offerType, offerForm.carouselId, carouselItems]);
   
   // Refresh categories when product form opens
   useEffect(() => {
@@ -168,6 +208,22 @@ const AdminDashboard = () => {
       setHeaderImages(res.data.headerImages || []);
     } catch (error) {
       console.error('Error fetching header images:', error);
+    }
+  };
+
+  const fetchCarouselItems = async () => {
+    try {
+      const res = await api.get('/api/admin/carousel-items/all', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const items = res.data.carouselItems || [];
+      console.log('Fetched carousel items for offer:', items.length, items);
+      setCarouselItems(items);
+    } catch (error) {
+      console.error('Error fetching carousel items:', error);
+      toast.error('Error loading carousel items');
     }
   };
 
@@ -350,6 +406,120 @@ const AdminDashboard = () => {
       console.error('Error removing header image:', error);
       const errorMessage = error.response?.data?.message || 'Error removing header image';
       toast.error(errorMessage);
+    }
+  };
+
+  const handleCreateCarouselItem = async (imageUrl) => {
+    try {
+      const fullImageUrl = getImageUrl(imageUrl);
+      
+      // Validate image dimensions before adding
+      try {
+        await validateCarouselImage(fullImageUrl);
+      } catch (validationError) {
+        toast.error(validationError.message || 'Image validation failed');
+        return;
+      }
+      
+      setEditingCarouselItem(null);
+      setSelectedProductsForCarousel([]);
+      setShowCarouselItemForm(true);
+      // Store the image URL temporarily
+      setEditingCarouselItem({ imageUrl: fullImageUrl, name: '', buttonText: 'Shop Now', productIds: [] });
+    } catch (error) {
+      if (error.message && error.message.includes('aspect ratio') || error.message && error.message.includes('too small')) {
+        return;
+      }
+      toast.error('Error preparing carousel item');
+    }
+  };
+
+  const handleSaveCarouselItem = async () => {
+    try {
+      if (!editingCarouselItem || !editingCarouselItem.imageUrl) {
+        toast.error('Image URL is required');
+        return;
+      }
+
+      const carouselItemData = {
+        imageUrl: editingCarouselItem.imageUrl,
+        name: editingCarouselItem.name || 'Carousel Item',
+        buttonText: editingCarouselItem.buttonText || 'Shop Now',
+        productIds: selectedProductsForCarousel,
+        order: editingCarouselItem.order || carouselItems.length
+      };
+
+      if (editingCarouselItem._id) {
+        // Update existing
+        await api.put(
+          `/api/admin/carousel-items/${editingCarouselItem._id}`,
+          carouselItemData,
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem('token')}`
+            }
+          }
+        );
+        toast.success('Carousel item updated successfully!');
+      } else {
+        // Create new
+        await api.post(
+          '/api/admin/carousel-items',
+          carouselItemData,
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem('token')}`
+            }
+          }
+        );
+        toast.success('Carousel item created successfully!');
+      }
+
+      setShowCarouselItemForm(false);
+      setEditingCarouselItem(null);
+      setSelectedProductsForCarousel([]);
+      fetchCarouselItems();
+      fetchHeaderImages();
+    } catch (error) {
+      console.error('Error saving carousel item:', error);
+      toast.error('Error saving carousel item');
+    }
+  };
+
+  const handleEditCarouselItem = (item) => {
+    setEditingCarouselItem({
+      ...item,
+      buttonText: item.buttonText || 'Shop Now' // Ensure buttonText is set
+    });
+    // Handle both cases: array of strings (IDs) or array of objects with _id
+    let productIds = item.productIds || [];
+    if (productIds.length > 0 && typeof productIds[0] === 'object' && productIds[0]._id) {
+      productIds = productIds.map(p => p._id || p);
+    }
+    setSelectedProductsForCarousel(productIds);
+    setShowCarouselItemForm(true);
+  };
+
+  const handleDeleteCarouselItem = async (itemId) => {
+    if (!window.confirm('Are you sure you want to delete this carousel item?')) {
+      return;
+    }
+
+    try {
+      await api.delete(
+        `/api/admin/carousel-items/${itemId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        }
+      );
+      toast.success('Carousel item deleted successfully!');
+      fetchCarouselItems();
+      fetchHeaderImages();
+    } catch (error) {
+      console.error('Error deleting carousel item:', error);
+      toast.error('Error deleting carousel item');
     }
   };
 
@@ -1192,7 +1362,9 @@ const AdminDashboard = () => {
         products: offer.products ? (Array.isArray(offer.products) ? offer.products.map(p => p._id || p) : []) : [],
         bundlePrice: offer.bundlePrice !== undefined ? offer.bundlePrice : '',
         bundleQuantity: offer.bundleQuantity !== undefined ? offer.bundleQuantity : '',
-        bundleDisplayText: offer.bundleDisplayText || ''
+        bundleDisplayText: offer.bundleDisplayText || '',
+        carouselId: offer.carouselId ? (offer.carouselId._id || offer.carouselId) : '',
+        carouselDisplayText: offer.carouselDisplayText || ''
       });
       
       // Only handle bundle-specific setup if it's a bundle offer
@@ -1209,6 +1381,12 @@ const AdminDashboard = () => {
         
         // Auto-select products from subcategories when editing (will be handled by useEffect)
         setSelectedProductsForOffer([]); // Reset first, useEffect will populate
+      } else if (offerType === 'carousel') {
+        // For carousel offers, products will be auto-populated by the useEffect
+        // Just ensure carousel items are loaded
+        if (carouselItems.length === 0) {
+          fetchCarouselItems();
+        }
       } else {
         // Reset bundle-related state for coupon offers
         setSelectedCategoryForOffer('');
@@ -1279,14 +1457,40 @@ const AdminDashboard = () => {
         }
       }
 
+      // Validate carousel offer
+      if (offerForm.offerType === 'carousel') {
+        if (!offerForm.carouselId) {
+          toast.error('Please select a carousel');
+          return;
+        }
+        if (!offerForm.bundleQuantity || offerForm.bundleQuantity < 1) {
+          toast.error('Please enter the number of products required for the offer (minimum 1)');
+          return;
+        }
+        if (!offerForm.bundlePrice || offerForm.bundlePrice < 0) {
+          toast.error('Please enter a valid offer price');
+          return;
+        }
+        if (selectedProductsForOffer.length === 0) {
+          toast.error('No products found in selected carousel. Please add products to the carousel first.');
+          return;
+        }
+        if (parseInt(offerForm.bundleQuantity) > selectedProductsForOffer.length) {
+          toast.error(`Offer quantity (${offerForm.bundleQuantity}) cannot be greater than available products (${selectedProductsForOffer.length})`);
+          return;
+        }
+      }
+
       const offerData = {
         ...offerForm,
         category: offerForm.offerType === 'bundle' ? (selectedCategoryForOffer || undefined) : undefined,
         subcategories: offerForm.offerType === 'bundle' ? selectedSubcategoriesForOffer : undefined,
-        products: offerForm.offerType === 'bundle' ? selectedProductsForOffer : undefined,
-        bundlePrice: offerForm.offerType === 'bundle' ? parseFloat(offerForm.bundlePrice) : undefined,
-        bundleQuantity: offerForm.offerType === 'bundle' ? parseInt(offerForm.bundleQuantity) : undefined,
+        products: (offerForm.offerType === 'bundle' || offerForm.offerType === 'carousel') ? selectedProductsForOffer : undefined,
+        bundlePrice: (offerForm.offerType === 'bundle' || offerForm.offerType === 'carousel') ? parseFloat(offerForm.bundlePrice) : undefined,
+        bundleQuantity: (offerForm.offerType === 'bundle' || offerForm.offerType === 'carousel') ? parseInt(offerForm.bundleQuantity) : undefined,
         bundleDisplayText: offerForm.offerType === 'bundle' ? offerForm.bundleDisplayText : undefined,
+        carouselId: offerForm.offerType === 'carousel' ? offerForm.carouselId : undefined,
+        carouselDisplayText: offerForm.offerType === 'carousel' ? offerForm.carouselDisplayText : undefined,
         discount: offerForm.offerType === 'coupon' ? parseFloat(offerForm.discount) : undefined
       };
 
@@ -1346,8 +1550,20 @@ const AdminDashboard = () => {
   // Helper function to normalize image URLs for comparison
   const normalizeImageUrl = (url) => {
     if (!url) return '';
+    
+    // Handle objects (e.g., carousel items with imageUrl property)
+    let imageUrl = url;
+    if (typeof url === 'object') {
+      imageUrl = url.imageUrl || url.url || url;
+    }
+    
+    // Convert to string
+    imageUrl = String(imageUrl);
+    
     // Get the full URL using getImageUrl to ensure consistent format
-    const fullUrl = getImageUrl(url);
+    const fullUrl = getImageUrl(imageUrl);
+    if (!fullUrl) return '';
+    
     // Remove query parameters and fragments, convert to lowercase
     // Also remove protocol and www for more robust comparison
     let normalized = fullUrl.split('?')[0].split('#')[0].toLowerCase();
@@ -1358,26 +1574,47 @@ const AdminDashboard = () => {
     return normalized;
   };
 
-  // Filter uploaded images to only show header carousel and logo images
+  // Filter uploaded images to only show carousel and logo images (exclude product images)
+  // Also show images that are not used in products (so they can be selected for carousel)
   const filteredUploadedImages = useMemo(() => {
     if (!uploadedImages || uploadedImages.length === 0) return [];
     
-    // Create a set of normalized header image URLs and logo URL for quick lookup
-    const headerImageUrls = new Set(
-      headerImages.map(img => normalizeImageUrl(img))
-    );
-    const logoUrl = logo ? normalizeImageUrl(logo) : null;
+    // Get all product images to exclude them
+    const productImageUrls = new Set();
+    products.forEach(product => {
+      if (product.images && Array.isArray(product.images)) {
+        product.images.forEach(img => {
+          const imgUrl = typeof img === 'string' ? img : (img.url || img);
+          if (imgUrl) {
+            productImageUrls.add(normalizeImageUrl(imgUrl));
+          }
+        });
+      }
+      // Also check color-specific images
+      if (product.colors && Array.isArray(product.colors)) {
+        product.colors.forEach(colorItem => {
+          if (typeof colorItem === 'object' && colorItem.images && Array.isArray(colorItem.images)) {
+            colorItem.images.forEach(img => {
+              const imgUrl = typeof img === 'string' ? img : (img.url || img);
+              if (imgUrl) {
+                productImageUrls.add(normalizeImageUrl(imgUrl));
+              }
+            });
+          }
+        });
+      }
+    });
     
-    // Filter images to only include those that match header images or logo
+    // Filter: Show all images that are NOT product images
+    // This includes: carousel images, logo, and newly uploaded images (not yet used in products)
     return uploadedImages.filter(image => {
       const imageUrl = image.url || image;
       const normalizedImageUrl = normalizeImageUrl(imageUrl);
       
-      // Check if this image is a header image or the logo
-      return headerImageUrls.has(normalizedImageUrl) || 
-             (logoUrl && normalizedImageUrl === logoUrl);
+      // Exclude if it's a product image, include everything else
+      return !productImageUrls.has(normalizedImageUrl);
     });
-  }, [uploadedImages, headerImages, logo]);
+  }, [uploadedImages, products]);
 
   return (
     <div className="admin-dashboard">
@@ -2164,26 +2401,61 @@ const AdminDashboard = () => {
                 </ul>
                 <p className="size-warning">⚠️ Images that don't match 16:9 aspect ratio will be rejected</p>
               </div>
-              {headerImages.length > 0 ? (
+              {carouselItems.length > 0 ? (
                 <div className="current-header-images">
-                  <p>Current header images ({headerImages.length}):</p>
+                  <p>Current carousel items ({carouselItems.length}):</p>
                   <div className="header-images-list">
-                    {headerImages.map((img, index) => (
-                      <div key={index} className="header-image-item">
-                        <img src={img} alt={`Header ${index + 1}`} />
-                        <button
-                          onClick={() => handleRemoveHeaderImage(img)}
-                          className="remove-header-btn"
-                          title="Remove from carousel"
-                        >
-                          × Remove
-                        </button>
+                    {carouselItems.map((item) => (
+                      <div key={item._id} className="header-image-item">
+                        <img 
+                          src={getImageUrl(item.imageUrl)} 
+                          alt={item.name || 'Carousel Item'}
+                          onError={(e) => {
+                            console.error('Failed to load carousel image:', item.imageUrl);
+                            e.target.style.display = 'none';
+                            // Show a placeholder or error message
+                            const parent = e.target.parentElement;
+                            if (parent && !parent.querySelector('.image-error')) {
+                              const errorDiv = document.createElement('div');
+                              errorDiv.className = 'image-error';
+                              errorDiv.textContent = 'Image not found';
+                              errorDiv.style.cssText = 'padding: 10px; background: #ffebee; color: #c62828; text-align: center;';
+                              parent.insertBefore(errorDiv, e.target.nextSibling);
+                            }
+                          }}
+                        />
+                        <div className="carousel-item-info">
+                          <p><strong>{item.name || 'Unnamed'}</strong></p>
+                          <p>Button Text: <strong>{item.buttonText || 'Shop Now'}</strong></p>
+                          <p>{item.productIds?.length || 0} product(s) selected</p>
+                          {item.imageUrl && (
+                            <p style={{ fontSize: '11px', color: '#666', wordBreak: 'break-all' }}>
+                              URL: {item.imageUrl.substring(0, 50)}...
+                            </p>
+                          )}
+                        </div>
+                        <div className="carousel-item-actions">
+                          <button
+                            onClick={() => handleEditCarouselItem(item)}
+                            className="edit-carousel-btn"
+                            title="Edit carousel item"
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCarouselItem(item._id)}
+                            className="remove-header-btn"
+                            title="Delete carousel item"
+                          >
+                            × Delete
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               ) : (
-                <p className="no-header-image">No header images set. Add images below to create a carousel.</p>
+                <p className="no-header-image">No carousel items set. Add images below to create carousel items.</p>
               )}
             </div>
 
@@ -2217,11 +2489,11 @@ const AdminDashboard = () => {
                           🎨 Set as Logo
                         </button>
                         <button
-                          onClick={() => handleAddHeaderImage(image.url || image)}
+                          onClick={() => handleCreateCarouselItem(image.url || image)}
                           className="add-header-btn"
                           title="Add to header carousel"
                         >
-                          ➕ Add to Header
+                          ➕ Add to Carousel
                         </button>
                         <button
                           onClick={() => handleDeleteImage(image)}
@@ -3185,12 +3457,13 @@ const AdminDashboard = () => {
                         setOfferForm({ 
                           ...offerForm, 
                           offerType: newType,
-                          showOnHomePage: newType === 'bundle' ? false : true
+                          showOnHomePage: (newType === 'bundle' || newType === 'carousel') ? false : true
                         });
                       }}
                     >
                       <option value="coupon">Coupon Offer</option>
                       <option value="bundle">Bundle Offer</option>
+                      <option value="carousel">Carousel Offer</option>
                     </select>
                   </div>
                   <div className="form-group">
@@ -3241,6 +3514,129 @@ const AdminDashboard = () => {
                         />
                         <small>
                           Custom text to display on the coupon offer card. If left empty, will show: "{offerForm.discountType === 'percentage' ? `${offerForm.discount || 'X'}% OFF` : `₹${offerForm.discount || '0'} OFF`}"
+                        </small>
+                      </div>
+                    </>
+                  )}
+
+                  {offerForm.offerType === 'carousel' && (
+                    <>
+                      <div className="form-group">
+                        <label>Select Carousel *</label>
+                        <select
+                          value={offerForm.carouselId || ''}
+                          onChange={(e) => {
+                            setOfferForm({ ...offerForm, carouselId: e.target.value });
+                          }}
+                        >
+                          <option value="">-- Select a Carousel --</option>
+                          {(() => {
+                            console.log('Rendering carousel dropdown. Total carouselItems:', carouselItems?.length || 0);
+                            console.log('Carousel items data:', carouselItems);
+                            
+                            if (!carouselItems || carouselItems.length === 0) {
+                              return <option value="" disabled>No carousels available. Please create carousel items first.</option>;
+                            }
+                            
+                            const filteredItems = carouselItems.filter(item => {
+                              // Check if item is active and has products
+                              const isActive = item.isActive !== false; // Default to true if not set
+                              const hasProducts = item.productIds && Array.isArray(item.productIds) && item.productIds.length > 0;
+                              console.log(`Carousel item "${item.name}": isActive=${isActive}, hasProducts=${hasProducts}, productIds=`, item.productIds);
+                              return isActive && hasProducts;
+                            });
+                            
+                            console.log('Filtered carousel items:', filteredItems.length);
+                            
+                            if (filteredItems.length === 0) {
+                              return <option value="" disabled>No carousels with products found. Please add products to carousel items first.</option>;
+                            }
+                            
+                            return filteredItems.map((item) => {
+                              const productCount = item.productIds && Array.isArray(item.productIds) ? item.productIds.length : 0;
+                              return (
+                                <option key={item._id} value={item._id}>
+                                  {item.name || 'Unnamed Carousel'} ({productCount} products)
+                                </option>
+                              );
+                            });
+                          })()}
+                        </select>
+                        <small>Select a carousel by its name. Products linked to this carousel will be included in the offer.</small>
+                      </div>
+                      {offerForm.carouselId && (
+                        <div className="form-group">
+                          <label>Products in Offer (Auto-selected from Carousel)</label>
+                          <div style={{ 
+                            padding: '10px', 
+                            backgroundColor: '#f5f5f5', 
+                            borderRadius: '4px',
+                            maxHeight: '200px',
+                            overflowY: 'auto'
+                          }}>
+                            {selectedProductsForOffer.length > 0 ? (
+                              <div>
+                                <strong>{selectedProductsForOffer.length} product(s)</strong> will be included in this offer
+                                <ul style={{ marginTop: '10px', paddingLeft: '20px' }}>
+                                  {allProducts
+                                    .filter(p => selectedProductsForOffer.includes(p._id))
+                                    .map(product => (
+                                      <li key={product._id} style={{ marginBottom: '5px' }}>
+                                        {product.name}
+                                      </li>
+                                    ))}
+                                </ul>
+                              </div>
+                            ) : (
+                              <p style={{ color: '#999' }}>No products found in selected carousel</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      <div className="form-group">
+                        <label>Number of Products Required *</label>
+                        <input
+                          type="number"
+                          value={offerForm.bundleQuantity || ''}
+                          onChange={(e) => setOfferForm({ ...offerForm, bundleQuantity: e.target.value })}
+                          placeholder="e.g., 3"
+                          min="1"
+                          step="1"
+                        />
+                        <small>
+                          How many products the customer needs to select to get the offer price
+                        </small>
+                      </div>
+                      <div className="form-group">
+                        <label>Offer Price (₹) *</label>
+                        <input
+                          type="number"
+                          value={offerForm.bundlePrice || ''}
+                          onChange={(e) => setOfferForm({ ...offerForm, bundlePrice: e.target.value })}
+                          placeholder="Enter offer price"
+                          min="0"
+                          step="0.01"
+                        />
+                        <small>
+                          Total price for {offerForm.bundleQuantity || 'X'} product(s) in this offer
+                          {offerForm.bundleQuantity && offerForm.bundlePrice && (
+                            <span style={{ display: 'block', marginTop: '4px', fontWeight: 'bold', color: '#4CAF50' }}>
+                              Example: {offerForm.bundleQuantity} products at ₹{offerForm.bundlePrice}
+                            </span>
+                          )}
+                        </small>
+                      </div>
+                      <div className="form-group">
+                        <label>Carousel Offer Display Text (Optional)</label>
+                        <input
+                          type="text"
+                          value={offerForm.carouselDisplayText || ''}
+                          onChange={(e) => setOfferForm({ ...offerForm, carouselDisplayText: e.target.value })}
+                          placeholder="e.g., Special Collection Offer"
+                          maxLength={100}
+                        />
+                        <small>
+                          Custom text to display on the offer card. If left empty, will show: "{offerForm.bundleQuantity || 'X'} products at ₹{offerForm.bundlePrice || '0'}"
                         </small>
                       </div>
                     </>
@@ -3617,6 +4013,156 @@ const AdminDashboard = () => {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Carousel Item Form Modal */}
+        {showCarouselItemForm && (
+          <div className="address-modal-overlay" onClick={() => {
+            setShowCarouselItemForm(false);
+            setEditingCarouselItem(null);
+            setSelectedProductsForCarousel([]);
+          }}>
+            <div className="address-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto' }}>
+              <div className="address-modal-header">
+                <h3>{editingCarouselItem?._id ? 'Edit Carousel Item' : 'Create Carousel Item'}</h3>
+                <button onClick={() => {
+                  setShowCarouselItemForm(false);
+                  setEditingCarouselItem(null);
+                  setSelectedProductsForCarousel([]);
+                }}>×</button>
+              </div>
+              <div style={{ padding: '20px' }}>
+                {editingCarouselItem?.imageUrl && (
+                  <div style={{ marginBottom: '20px', textAlign: 'center' }}>
+                    <img 
+                      src={editingCarouselItem.imageUrl} 
+                      alt="Carousel preview" 
+                      style={{ maxWidth: '100%', maxHeight: '200px', objectFit: 'contain' }}
+                    />
+                  </div>
+                )}
+                <div className="form-group">
+                  <label>Carousel Item Name *</label>
+                  <input
+                    type="text"
+                    value={editingCarouselItem?.name || ''}
+                    onChange={(e) => setEditingCarouselItem({ ...editingCarouselItem, name: e.target.value })}
+                    placeholder="e.g., Summer Collection, New Arrivals"
+                    maxLength={100}
+                  />
+                  <small>This name will be used to identify this carousel item</small>
+                </div>
+                <div className="form-group">
+                  <label>Button Text</label>
+                  <input
+                    type="text"
+                    value={editingCarouselItem?.buttonText || ''}
+                    onChange={(e) => {
+                      setEditingCarouselItem({ ...editingCarouselItem, buttonText: e.target.value });
+                    }}
+                    placeholder="e.g., Shop Now, Explore, View Collection (default: Shop Now)"
+                    maxLength={50}
+                  />
+                  <small>Text to display on the button overlay on the carousel image. Leave empty for default "Shop Now".</small>
+                </div>
+                <div className="form-group">
+                  <label>Select Products</label>
+                  <p style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>
+                    Select products that will be shown when users click on this carousel image
+                  </p>
+                  {allProducts.length === 0 ? (
+                    <p>Loading products...</p>
+                  ) : (
+                    <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #ddd', padding: '10px', borderRadius: '4px' }}>
+                      <div style={{ marginBottom: '10px' }}>
+                        <input
+                          type="text"
+                          placeholder="Search products..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          style={{ width: '100%', padding: '8px', marginBottom: '10px' }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const allProductIds = allProducts
+                              .filter(p => !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                              .map(p => p._id);
+                            setSelectedProductsForCarousel(allProductIds);
+                          }}
+                          style={{ marginRight: '10px', padding: '5px 10px', fontSize: '12px' }}
+                        >
+                          Select All (Filtered)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProductsForCarousel([])}
+                          style={{ padding: '5px 10px', fontSize: '12px' }}
+                        >
+                          Clear All
+                        </button>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+                        {allProducts
+                          .filter(p => !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                          .map((product) => (
+                            <label
+                              key={product._id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '8px',
+                                border: selectedProductsForCarousel.includes(product._id) ? '2px solid #4CAF50' : '1px solid #ddd',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                backgroundColor: selectedProductsForCarousel.includes(product._id) ? '#f0f8f0' : 'white'
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedProductsForCarousel.includes(product._id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedProductsForCarousel([...selectedProductsForCarousel, product._id]);
+                                  } else {
+                                    setSelectedProductsForCarousel(selectedProductsForCarousel.filter(id => id !== product._id));
+                                  }
+                                }}
+                                style={{ marginRight: '8px' }}
+                              />
+                              <span style={{ fontSize: '12px', flex: 1 }}>{product.name}</span>
+                            </label>
+                          ))}
+                      </div>
+                      <p style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
+                        {selectedProductsForCarousel.length} product(s) selected
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                  <button
+                    onClick={handleSaveCarouselItem}
+                    className="save-notes-btn"
+                    style={{ flex: 1 }}
+                  >
+                    💾 Save
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowCarouselItemForm(false);
+                      setEditingCarouselItem(null);
+                      setSelectedProductsForCarousel([]);
+                    }}
+                    className="cancel-notes-btn"
+                    style={{ flex: 1 }}
+                  >
+                    ❌ Cancel
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

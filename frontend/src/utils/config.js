@@ -24,6 +24,14 @@ export const getBackendUrl = () => {
 export const getImageUrl = (imagePath) => {
   if (!imagePath) return "";
   
+  // Handle objects (e.g., carousel items with imageUrl property)
+  if (typeof imagePath === 'object') {
+    imagePath = imagePath.imageUrl || imagePath.url || imagePath;
+  }
+  
+  // Convert to string if not already
+  imagePath = String(imagePath);
+  
   // If it's already a full URL (including Cloudinary URLs), return as-is
   if (imagePath.startsWith("http")) {
     // Check if it's a Cloudinary URL - return as-is
@@ -110,12 +118,18 @@ export const getOptimizedImageUrl = (imagePath, width = 'product-list') => {
         let imagePath = imagePathParts.join('/');
         imagePath = imagePath.replace(/\.(png|jpg|jpeg|webp|avif)$/i, '');
         
+        // Validate that we have a valid image path (not empty)
+        if (!imagePath || imagePath.trim() === '') {
+          console.warn('Invalid Cloudinary image path:', baseUrl);
+          return baseUrl; // Return original URL if path is invalid
+        }
+        
         // Build optimized URL
         return `https://res.cloudinary.com/${cloudName}/image/upload/f_auto,q_auto,w_${targetWidth}/${imagePath}`;
       }
     } catch (e) {
       // If parsing fails, return base URL
-      console.warn('Failed to optimize Cloudinary URL:', e);
+      console.warn('Failed to optimize Cloudinary URL:', e, baseUrl);
     }
   }
   

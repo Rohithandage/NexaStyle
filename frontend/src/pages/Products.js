@@ -78,6 +78,7 @@ const Products = () => {
   useEffect(() => {
     const searchQuery = searchParams.get('search');
     const subcategoryFromUrl = searchParams.get('subcategory');
+    const carouselParam = searchParams.get('carousel');
     
     // If there's a search query, clear subcategory selection
     if (searchQuery && searchQuery.trim()) {
@@ -87,9 +88,9 @@ const Products = () => {
     } else {
       setSelectedSubcategory('');
     }
-    // Reset to page 1 when subcategory or search changes
+    // Reset to page 1 when subcategory, search, or carousel changes
     setPage(1);
-    // Clear products when subcategory or search changes to prevent showing stale data
+    // Clear products when subcategory, search, or carousel changes to prevent showing stale data
     setProducts([]);
   }, [searchParams, category]);
 
@@ -111,15 +112,23 @@ const Products = () => {
     try {
       const params = { page, limit: 12 };
       
-      // Get search query first
+      // Get search query and carousel parameter
       const searchQuery = searchParams.get('search');
+      const carouselParam = searchParams.get('carousel');
       
+      // If there's a carousel parameter, filter by product IDs
+      if (carouselParam && carouselParam.trim()) {
+        const productIds = carouselParam.split(',').filter(id => id.trim());
+        if (productIds.length > 0) {
+          params.productIds = productIds.join(',');
+        }
+      }
       // If there's a search query, don't filter by category/subcategory
       // Search should work across all products
-      if (searchQuery && searchQuery.trim()) {
+      else if (searchQuery && searchQuery.trim()) {
         params.search = searchQuery.trim();
       } else {
-        // Only apply category/subcategory filters when not searching
+        // Only apply category/subcategory filters when not searching or filtering by carousel
         if (category) params.category = category;
         
         // Always use URL parameter as source of truth for subcategory
@@ -252,144 +261,15 @@ const Products = () => {
   return (
     <div className="products-page">
       <div className="products-container">
-        <div className="products-sidebar">
-          <h2>Categories</h2>
-          <div className="category-list">
-            <Link to="/products" className={!category ? 'active' : ''}>
-              All Products
-            </Link>
-            {categories.map((cat) => (
-              <Link
-                key={cat._id}
-                to={`/products/${cat.name}`}
-                className={category === cat.name ? 'active' : ''}
-              >
-                {cat.name}
-              </Link>
-            ))}
-          </div>
-
-          {subcategories.length > 0 && (
-            <>
-              <h3>Subcategories</h3>
-              <div className="subcategory-list">
-                <button
-                  onClick={() => {
-                    setSelectedSubcategory('');
-                    const newSearchParams = new URLSearchParams(searchParams);
-                    newSearchParams.delete('subcategory');
-                    setSearchParams(newSearchParams);
-                    setPage(1);
-                  }}
-                  className={!selectedSubcategory ? 'active' : ''}
-                >
-                  All
-                </button>
-                {subcategories.map((sub) => (
-                  <button
-                    key={sub._id}
-                    onClick={() => {
-                      setSelectedSubcategory(sub.slug);
-                      const newSearchParams = new URLSearchParams(searchParams);
-                      newSearchParams.set('subcategory', sub.slug);
-                      setSearchParams(newSearchParams);
-                      setPage(1);
-                    }}
-                    className={selectedSubcategory === sub.slug ? 'active' : ''}
-                  >
-                    {sub.name}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Mobile Category Filter */}
-        <div className="mobile-category-filter">
-          <button 
-            className="mobile-filter-toggle"
-            onClick={() => setShowMobileFilters(!showMobileFilters)}
-          >
-            <span>📂</span> {category || 'All Categories'}
-            <span className="filter-arrow">{showMobileFilters ? '▲' : '▼'}</span>
-          </button>
-          
-          {showMobileFilters && (
-            <div className="mobile-filter-content">
-              <div className="mobile-category-section">
-                <h3>Categories</h3>
-                <div className="mobile-category-list">
-                  <Link 
-                    to="/products" 
-                    className={`mobile-category-item ${!category ? 'active' : ''}`}
-                    onClick={() => setShowMobileFilters(false)}
-                  >
-                    All Products
-                  </Link>
-                  {categories.map((cat) => (
-                    <Link
-                      key={cat._id}
-                      to={`/products/${cat.name}`}
-                      className={`mobile-category-item ${category === cat.name ? 'active' : ''}`}
-                      onClick={() => setShowMobileFilters(false)}
-                    >
-                      {cat.name}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-
-              {subcategories.length > 0 && (
-                <div className="mobile-subcategory-section">
-                  <h3>Subcategories</h3>
-                  <div className="mobile-subcategory-list">
-                    <button
-                      onClick={() => {
-                        setSelectedSubcategory('');
-                        const newSearchParams = new URLSearchParams(searchParams);
-                        newSearchParams.delete('subcategory');
-                        setSearchParams(newSearchParams);
-                        setPage(1);
-                        setShowMobileFilters(false);
-                      }}
-                      className={`mobile-subcategory-item ${!selectedSubcategory ? 'active' : ''}`}
-                    >
-                      All
-                    </button>
-                    {subcategories.map((sub) => (
-                      <button
-                        key={sub._id}
-                        onClick={() => {
-                          setSelectedSubcategory(sub.slug);
-                          const newSearchParams = new URLSearchParams(searchParams);
-                          newSearchParams.set('subcategory', sub.slug);
-                          setSearchParams(newSearchParams);
-                          setPage(1);
-                          setShowMobileFilters(false);
-                        }}
-                        className={`mobile-subcategory-item ${selectedSubcategory === sub.slug ? 'active' : ''}`}
-                      >
-                        {sub.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
         <div className="products-content">
           <h1>
-            {searchParams.get('search') ? (
+            {searchParams.get('carousel') ? (
+              <>
+                {searchParams.get('name') ? decodeURIComponent(searchParams.get('name')) : 'Featured Products'}
+              </>
+            ) : searchParams.get('search') ? (
               <>
                 Search Results for "{searchParams.get('search')}"
-                {!loading && (
-                  <span className="search-results-count">
-                    {' '}({totalProducts} {totalProducts === 1 ? 'product' : 'products'} found)
-                  </span>
-                )}
               </>
             ) : (
               <>
@@ -437,6 +317,9 @@ const Products = () => {
                     <div key={product._id} className="product-card">
                       <Link to={`/product/${product._id}`} className="product-card-link">
                         <div className="product-image">
+                          {product.hasOffer && (
+                            <div className="offer-badge">OFFER</div>
+                          )}
                           {product.images && product.images[0] ? (
                             <img 
                               src={getOptimizedImageUrl(product.images[0], 'product-list')} 

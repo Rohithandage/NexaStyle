@@ -5,6 +5,7 @@ const Product = require('../models/Product');
 const Order = require('../models/Order');
 const Settings = require('../models/Settings');
 const Offer = require('../models/Offer');
+const CarouselItem = require('../models/CarouselItem');
 const { auth, admin } = require('../middleware/auth');
 const cloudinary = require('cloudinary').v2;
 
@@ -457,6 +458,102 @@ router.get('/settings/header-image', async (req, res) => {
   }
 });
 
+// Carousel Item Management
+// Get all carousel items
+router.get('/carousel-items', async (req, res) => {
+  try {
+    const carouselItems = await CarouselItem.find({ isActive: true })
+      .populate('productIds', 'name images price discountPrice')
+      .sort({ order: 1, createdAt: 1 });
+    res.json({ success: true, carouselItems });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get all carousel items (including inactive) for admin
+router.get('/carousel-items/all', async (req, res) => {
+  try {
+    const carouselItems = await CarouselItem.find()
+      .populate('productIds', 'name images price discountPrice')
+      .sort({ order: 1, createdAt: 1 });
+    res.json({ success: true, carouselItems });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Create carousel item
+router.post('/carousel-items', async (req, res) => {
+  try {
+    const { imageUrl, name, buttonText, productIds, order } = req.body;
+    
+    if (!imageUrl) {
+      return res.status(400).json({ message: 'Image URL is required' });
+    }
+    
+    const carouselItem = new CarouselItem({
+      imageUrl,
+      name: name || 'Carousel Item',
+      buttonText: buttonText || 'Shop Now',
+      productIds: productIds || [],
+      order: order || 0,
+      isActive: true
+    });
+    
+    await carouselItem.save();
+    await carouselItem.populate('productIds', 'name images price discountPrice');
+    
+    res.json({ success: true, carouselItem });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Update carousel item
+router.put('/carousel-items/:id', async (req, res) => {
+  try {
+    const { imageUrl, name, buttonText, productIds, order, isActive } = req.body;
+    
+    const updateData = { updatedAt: new Date() };
+    if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
+    if (name !== undefined) updateData.name = name;
+    if (buttonText !== undefined) updateData.buttonText = buttonText;
+    if (productIds !== undefined) updateData.productIds = productIds;
+    if (order !== undefined) updateData.order = order;
+    if (isActive !== undefined) updateData.isActive = isActive;
+    
+    const carouselItem = await CarouselItem.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true }
+    ).populate('productIds', 'name images price discountPrice');
+    
+    if (!carouselItem) {
+      return res.status(404).json({ message: 'Carousel item not found' });
+    }
+    
+    res.json({ success: true, carouselItem });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Delete carousel item
+router.delete('/carousel-items/:id', async (req, res) => {
+  try {
+    const carouselItem = await CarouselItem.findByIdAndDelete(req.params.id);
+    
+    if (!carouselItem) {
+      return res.status(404).json({ message: 'Carousel item not found' });
+    }
+    
+    res.json({ success: true, message: 'Carousel item deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Logo Management
 // Get logo
 router.get('/settings/logo', async (req, res) => {
@@ -614,7 +711,10 @@ router.post('/offers', async (req, res) => {
       products,
       bundlePrice,
       bundleQuantity,
-      bundleDisplayText
+      bundleDisplayText,
+      // Carousel offer fields
+      carouselId,
+      carouselDisplayText
     } = req.body;
     
     if (!code) {
@@ -656,6 +756,27 @@ router.post('/offers', async (req, res) => {
           return res.status(400).json({ message: `Bundle quantity (${quantity}) cannot be greater than available products (${products.length})` });
         }
       }
+      
+      // Validate carousel offer
+      if (offerTypeValue === 'carousel') {
+        if (!carouselId) {
+          return res.status(400).json({ message: 'Carousel ID is required for carousel offers' });
+        }
+        const quantity = parseInt(bundleQuantity);
+        if (!bundleQuantity || isNaN(quantity) || quantity < 1) {
+          return res.status(400).json({ message: 'Offer quantity is required and must be at least 1' });
+        }
+        const price = parseFloat(bundlePrice);
+        if (!bundlePrice || isNaN(price) || price < 0) {
+          return res.status(400).json({ message: 'Valid offer price is required' });
+        }
+        if (!products || !Array.isArray(products) || products.length === 0) {
+          return res.status(400).json({ message: 'At least one product is required for carousel offers' });
+        }
+        if (quantity > products.length) {
+          return res.status(400).json({ message: `Offer quantity (${quantity}) cannot be greater than available products (${products.length})` });
+        }
+      }
     
     const offerData = {
       code: code.toUpperCase().trim(),
@@ -675,20 +796,33 @@ router.post('/offers', async (req, res) => {
       offerData.bundlePrice = parseFloat(bundlePrice);
       offerData.bundleQuantity = parseInt(bundleQuantity);
       offerData.bundleDisplayText = bundleDisplayText || '';
+    } else if (offerTypeValue === 'carousel') {
+      offerData.carouselId = carouselId;
+      offerData.products = products;
+      offerData.bundlePrice = parseFloat(bundlePrice);
+      offerData.bundleQuantity = parseInt(bundleQuantity);
+      offerData.carouselDisplayText = carouselDisplayText || '';
     }
     
     const offer = new Offer(offerData);
     await offer.save();
     
     // Populate products for response
-    if (offerTypeValue === 'bundle') {
+    if (offerTypeValue === 'bundle' || offerTypeValue === 'carousel') {
       await offer.populate('products');
+      if (offerTypeValue === 'carousel') {
+        await offer.populate('carouselId');
+      }
     }
     
     res.status(201).json(offer);
   } catch (error) {
+    console.error('Error creating offer:', error);
     if (error.code === 11000) {
       return res.status(400).json({ message: 'Offer code already exists' });
+    }
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ message: 'Validation error', error: error.message });
     }
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -712,7 +846,10 @@ router.put('/offers/:id', async (req, res) => {
       products,
       bundlePrice,
       bundleQuantity,
-      bundleDisplayText
+      bundleDisplayText,
+      // Carousel offer fields
+      carouselId,
+      carouselDisplayText
     } = req.body;
     
     const updateData = { updatedAt: new Date() };
@@ -760,15 +897,24 @@ router.put('/offers/:id', async (req, res) => {
       updateData.bundleDisplayText = bundleDisplayText.trim();
     }
     
+    // Handle carousel fields
+    if (carouselId !== undefined) updateData.carouselId = carouselId;
+    if (carouselDisplayText !== undefined) {
+      updateData.carouselDisplayText = carouselDisplayText.trim();
+    }
+    
     const offer = await Offer.findByIdAndUpdate(req.params.id, updateData, { new: true });
     
     if (!offer) {
       return res.status(404).json({ message: 'Offer not found' });
     }
     
-    // Populate products for response if bundle
-    if (offer.offerType === 'bundle' && offer.products && offer.products.length > 0) {
+    // Populate products for response if bundle or carousel
+    if ((offer.offerType === 'bundle' || offer.offerType === 'carousel') && offer.products && offer.products.length > 0) {
       await offer.populate('products');
+      if (offer.offerType === 'carousel') {
+        await offer.populate('carouselId');
+      }
     }
     
     res.json(offer);

@@ -2,12 +2,18 @@
   min-height: 100vh;
   padding: 2rem 0;
   background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  position: relative;
+  z-index: 1;
+  margin-top: 0;
+  padding-top: calc(2rem + 80px);
 }
 
 .admin-container {
   max-width: 1400px;
   margin: 0 auto;
   padding: 0 2rem;
+  position: relative;
+  z-index: 2;
 }
 
 .admin-container h1 {
@@ -2225,12 +2231,21 @@
 }
 
 @media (max-width: 768px) {
+  .admin-dashboard {
+    padding: 1.5rem 0;
+    padding-top: calc(1.5rem + 180px);
+    min-height: calc(100vh - 180px);
+  }
+
   .admin-container {
     padding: 0 1rem;
+    margin-top: 0.5rem;
   }
 
   .admin-container h1 {
     font-size: 2rem;
+    padding-top: 0.75rem;
+    margin-top: 0.5rem;
   }
 
   .admin-tabs {
@@ -2485,6 +2500,133 @@
   .trending-management,
   .all-products-management {
     padding: 1.5rem;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .analytics-title,
+  .categories-management h2,
+  .orders-management h2,
+  .reviews-management h2,
+  .images-management h2,
+  .products-management h2,
+  .trending-management h2,
+  .all-products-management h2 {
+    word-wrap: break-word;
+    line-height: 1.4;
+  }
+
+  .stat-card h3,
+  .stat-label {
+    word-wrap: break-word;
+  }
+
+  .stat-value {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .orders-table th,
+  .orders-table td {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    font-size: 0.8rem;
+    padding: 0.625rem;
+  }
+
+  .review-card {
+    word-wrap: break-word;
+  }
+
+  .review-header h4,
+  .review-comment {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.6;
+  }
+
+  .product-info-admin h4,
+  .product-category,
+  .product-price-admin {
+    word-wrap: break-word;
+  }
+
+  .subcategory-item {
+    word-wrap: break-word;
+  }
+
+  .subcategory-name-input input,
+  .subcategory-colors-input input {
+    word-wrap: break-word;
+  }
+
+  .address-field span {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.5;
+  }
+
+  .notes-textarea {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .cod-input {
+    word-wrap: break-word;
+  }
+
+  .offer-code,
+  .offer-description {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .product-info-category h5 {
+    word-wrap: break-word;
+    line-height: 1.4;
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-container {
+    padding: 0 0.75rem;
+  }
+
+  .admin-container h1 {
+    font-size: 1.75rem;
+    line-height: 1.3;
+  }
+
+  .analytics-section,
+  .categories-management,
+  .orders-management,
+  .reviews-management,
+  .images-management,
+  .products-management,
+  .trending-management,
+  .all-products-management {
+    padding: 1.25rem;
+  }
+
+  .orders-table th,
+  .orders-table td {
+    font-size: 0.75rem;
+    padding: 0.5rem;
+  }
+
+  .review-comment {
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  .address-field span {
+    font-size: 0.85rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .notes-textarea {
+    font-size: 0.9rem;
+    min-height: 250px;
   }
 }
 

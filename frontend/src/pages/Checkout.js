@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
+import { FiPlus, FiMinus } from 'react-icons/fi';
 import { getOptimizedImageUrl } from '../utils/config';
 import './Checkout.css';
 
@@ -124,6 +125,25 @@ const Checkout = () => {
     if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
       setIsMobile(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
     }
+    
+    // Listen for cart updates from other pages
+    const handleCartUpdate = () => {
+      fetchCart(false); // Don't show empty message on refresh
+    };
+    
+    // Listen for cart update events
+    window.addEventListener('cartUpdated', handleCartUpdate);
+    
+    // Also refresh when page regains focus (in case cart was modified in another tab)
+    const handleFocus = () => {
+      fetchCart(false); // Don't show empty message on refresh
+    };
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('cartUpdated', handleCartUpdate);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [isAuthenticated]);
 
   useEffect(() => {
@@ -132,10 +152,15 @@ const Checkout = () => {
     } else {
       setBundleOffers([]);
       setAppliedBundleOffer(null);
+      // If cart becomes empty, redirect to cart page
+      if (cart && (!cart.items || cart.items.length === 0)) {
+        toast.info('Your cart is empty');
+        navigate('/cart');
+      }
     }
-  }, [cart]);
+  }, [cart, navigate]);
 
-  const fetchCart = async () => {
+  const fetchCart = async (showEmptyMessage = true) => {
     try {
       const res = await api.get('/api/cart', {
         headers: {
@@ -144,11 +169,16 @@ const Checkout = () => {
       });
       setCart(res.data);
       if (!res.data || res.data.items.length === 0) {
-        toast.info('Your cart is empty');
-        navigate('/cart');
+        if (showEmptyMessage) {
+          toast.info('Your cart is empty');
+          navigate('/cart');
+        }
       }
+      // Return the cart data for chaining if needed
+      return res.data;
     } catch (error) {
       toast.error('Error loading cart');
+      return null;
     } finally {
       setLoading(false);
     }
@@ -204,12 +234,45 @@ const Checkout = () => {
         }
       });
       const applicableOffers = res.data.applicableOffers || [];
+      console.log('Fetched applicable offers:', applicableOffers.length, applicableOffers);
+      console.log('Offer types:', applicableOffers.map(o => ({ code: o.offer?.code, type: o.offer?.offerType })));
       setBundleOffers(applicableOffers);
       
-      // Auto-apply the first applicable bundle offer if available
-      if (applicableOffers.length > 0 && !appliedBundleOffer) {
-        setAppliedBundleOffer(applicableOffers[0]);
-        toast.success(`Bundle offer applied! Save ₹${(applicableOffers[0].originalTotal - applicableOffers[0].bundlePrice).toFixed(2)}`);
+      // Check if currently applied bundle offer is still valid
+      if (appliedBundleOffer) {
+        const stillValid = applicableOffers.find(
+          offer => offer.offer._id === appliedBundleOffer.offer._id
+        );
+        if (!stillValid) {
+          // Offer is no longer valid, clear it
+          setAppliedBundleOffer(null);
+          toast.info('Bundle offer is no longer applicable');
+        } else {
+          // Update the applied offer with latest data
+          setAppliedBundleOffer(stillValid);
+          // Debug logging
+          console.log('Updated bundle offer:', {
+            bundleProducts: stillValid.bundleProducts,
+            originalPriceProducts: stillValid.originalPriceProducts,
+            totalBundlePrice: stillValid.totalBundlePrice || stillValid.bundlePrice,
+            numberOfBundles: stillValid.numberOfBundles
+          });
+        }
+      } else {
+        // Auto-apply the first applicable bundle offer if available
+        if (applicableOffers.length > 0) {
+          setAppliedBundleOffer(applicableOffers[0]);
+          const offerType = applicableOffers[0].offer?.offerType === 'carousel' ? 'Carousel' : 'Bundle';
+          const savings = (applicableOffers[0].originalTotal - (applicableOffers[0].totalBundlePrice || applicableOffers[0].bundlePrice)).toFixed(2);
+          toast.success(`${offerType} offer applied! Save ₹${savings}`);
+          // Debug logging
+          console.log('Applied bundle offer:', {
+            bundleProducts: applicableOffers[0].bundleProducts,
+            originalPriceProducts: applicableOffers[0].originalPriceProducts,
+            totalBundlePrice: applicableOffers[0].totalBundlePrice || applicableOffers[0].bundlePrice,
+            numberOfBundles: applicableOffers[0].numberOfBundles
+          });
+        }
       }
     } catch (error) {
       console.error('Error fetching bundle offers:', error);
@@ -293,22 +356,154 @@ const Checkout = () => {
     toast.info('Coupon removed');
   };
 
-  // Calculate cart total with coupon discount and bundle pricing
-  const calculateCartTotal = () => {
-    let total = cart?.total || 0;
+  // Calculate subtotal with bundle pricing applied (before coupon and COD charges)
+  // Example: 2 products at ₹399 each, bundle offer: 2 products at ₹499
+  // - cart.total = ₹798 (all at original price)
+  // - bundleProductsTotal = ₹798 (2 products that get bundle price)
+  // - bundlePriceToApply = ₹499 (bundle price for 2 products)
+  // - subtotal = ₹798 - ₹798 + ₹499 = ₹499 ✓
+  //
+  // Example: 3 products at ₹399 each, bundle offer: 2 products at ₹499
+  // - cart.total = ₹1197 (all at original price)
+  // - bundleProductsTotal = ₹798 (2 products that get bundle price)
+  // - bundlePriceToApply = ₹499 (bundle price for 2 products)
+  // - subtotal = ₹1197 - ₹798 + ₹499 = ₹898 ✓ (₹499 bundle + ₹399 original)
+  //
+  // Example: 4 products at ₹399 each, bundle offer: 2 products at ₹499
+  // - cart.total = ₹1596 (all at original price)
+  // - bundleProductsTotal = ₹1596 (4 products that get bundle price)
+  // - bundlePriceToApply = ₹998 (2 bundles: ₹499 + ₹499)
+  // - subtotal = ₹1596 - ₹1596 + ₹998 = ₹998 ✓ (₹499 + ₹499)
+  const calculateSubtotal = () => {
+    if (!cart) return 0;
+    
+    // Start with cart total (all products at original price)
+    let subtotal = cart.total || 0;
     
     // Apply bundle pricing if applicable
-    if (appliedBundleOffer) {
-      // Calculate total for bundle products
-      const bundleProductsTotal = appliedBundleOffer.matchingProducts.reduce((sum, match) => {
-        const cartItem = cart.items.find(item => 
-          item.product._id === match.productId || item.product._id.toString() === match.productId
-        );
-        return sum + (cartItem ? cartItem.price * cartItem.quantity : 0);
+    if (appliedBundleOffer && cart.items) {
+      // Get matching product IDs from the offer
+      const matchingProductIds = (appliedBundleOffer.matchingProducts || []).map(m => m.productId?.toString());
+      
+      // Calculate total for matching products at original price
+      const matchingProductsTotal = cart.items.reduce((sum, item) => {
+        const itemProductId = item.product?._id?.toString() || item.product?.toString();
+        if (matchingProductIds.includes(itemProductId)) {
+          return sum + (item.price * item.quantity);
+        }
+        return sum;
       }, 0);
       
-      // Replace bundle products total with bundle price
-      total = total - bundleProductsTotal + appliedBundleOffer.bundlePrice;
+      // Calculate total for products that get bundle pricing (at original price)
+      const bundleProductsTotal = (appliedBundleOffer.bundleProducts || []).reduce((sum, bundleProduct) => {
+        return sum + (bundleProduct.price * bundleProduct.quantity);
+      }, 0);
+      
+      // Calculate total for products that stay at original price (excess quantities)
+      const originalPriceProductsTotal = (appliedBundleOffer.originalPriceProducts || []).reduce((sum, origProduct) => {
+        return sum + (origProduct.price * origProduct.quantity);
+      }, 0);
+      
+      // Get total bundle price to apply
+      const bundlePriceToApply = appliedBundleOffer.totalBundlePrice || appliedBundleOffer.bundlePrice;
+      
+      // Verify the breakdown is correct
+      const breakdownTotal = bundleProductsTotal + originalPriceProductsTotal;
+      if (Math.abs(breakdownTotal - matchingProductsTotal) > 0.01) {
+        console.warn('Bundle breakdown mismatch!', {
+          matchingProductsTotal,
+          bundleProductsTotal,
+          originalPriceProductsTotal,
+          breakdownTotal
+        });
+      }
+      
+      // Formula: cart.total - bundleProductsTotal + bundlePriceToApply
+      // 
+      // Explanation:
+      // - cart.total includes ALL products (matching + non-matching) at original price
+      // - bundleProductsTotal = original price of products that get bundle pricing
+      // - bundlePriceToApply = bundle price(s) to replace bundleProductsTotal
+      // - originalPriceProductsTotal is already in cart.total, so it stays
+      // - Non-matching products are also already in cart.total, so they stay
+      //
+      // Example: 3 products at ₹399 each, bundle offer: 2 products at ₹499
+      // - cart.total = ₹1197 (all 3 at original price)
+      // - matchingProductsTotal = ₹1197 (all 3 are matching)
+      // - bundleProductsTotal = ₹798 (2 products × ₹399 that get bundle price)
+      // - originalPriceProductsTotal = ₹399 (1 product × ₹399 that stays at original)
+      // - bundlePriceToApply = ₹499 (bundle price for 2 products)
+      // - subtotal = ₹1197 - ₹798 + ₹499 = ₹898 ✓ (₹499 bundle + ₹399 original)
+      
+      // Debug logging BEFORE calculation
+      console.log('=== Subtotal Calculation Debug ===');
+      console.log('Cart total:', cart.total);
+      console.log('Matching products total:', matchingProductsTotal);
+      console.log('Bundle products (from backend):', JSON.stringify(appliedBundleOffer.bundleProducts, null, 2));
+      console.log('Original price products (from backend):', JSON.stringify(appliedBundleOffer.originalPriceProducts, null, 2));
+      console.log('Bundle products total (to subtract):', bundleProductsTotal);
+      console.log('Original price products total:', originalPriceProductsTotal);
+      console.log('Bundle price to apply:', bundlePriceToApply);
+      console.log('Number of bundles:', appliedBundleOffer.numberOfBundles);
+      
+      // The key issue: We need to ensure bundleProductsTotal only includes products that get bundle pricing
+      // If bundleProducts contains all products, we need to recalculate based on numberOfBundles
+      const requiredQuantity = appliedBundleOffer.bundleQuantity || 1;
+      const numberOfBundles = appliedBundleOffer.numberOfBundles || 1;
+      
+      // Recalculate bundleProductsTotal to ensure it's correct
+      // Only count the products that actually get bundle pricing (numberOfBundles * requiredQuantity)
+      let recalculatedBundleProductsTotal = 0;
+      let remainingForBundle = numberOfBundles * requiredQuantity;
+      
+      // Iterate through cart items and calculate which quantities get bundle pricing
+      for (const item of cart.items) {
+        const itemProductId = item.product?._id?.toString() || item.product?.toString();
+        if (matchingProductIds.includes(itemProductId) && remainingForBundle > 0) {
+          const quantityForBundle = Math.min(item.quantity, remainingForBundle);
+          recalculatedBundleProductsTotal += item.price * quantityForBundle;
+          remainingForBundle -= quantityForBundle;
+        }
+      }
+      
+      console.log('Recalculated bundle products total:', recalculatedBundleProductsTotal);
+      console.log('Remaining for bundle after calculation:', remainingForBundle);
+      
+      // Use recalculated value (it's more accurate as it uses actual cart item prices)
+      const finalBundleProductsTotal = recalculatedBundleProductsTotal > 0 ? recalculatedBundleProductsTotal : bundleProductsTotal;
+      
+      // Calculate subtotal: cart.total - products that get bundle pricing + bundle price
+      // This ensures original price products (excess) remain in the total
+      subtotal = subtotal - finalBundleProductsTotal + bundlePriceToApply;
+      
+      console.log('Final subtotal calculation:', {
+        cartTotal: cart.total,
+        finalBundleProductsTotal,
+        bundlePriceToApply,
+        calculatedSubtotal: subtotal
+      });
+      
+      console.log('Final calculation:', {
+        cartTotal: cart.total,
+        finalBundleProductsTotal,
+        bundlePriceToApply,
+        calculatedSubtotal: subtotal
+      });
+      console.log('================================');
+    }
+    
+    return subtotal;
+  };
+
+  // Calculate cart total with coupon discount and bundle pricing
+  const calculateCartTotal = () => {
+    if (!cart) return 0;
+    
+    let total = calculateSubtotal();
+    
+    // Ensure total is a valid number
+    if (isNaN(total) || !isFinite(total)) {
+      total = cart.total || 0;
     }
     
     // Apply coupon discount if applicable (on top of bundle pricing)
@@ -325,7 +520,14 @@ const Checkout = () => {
       total += codCharges;
     }
     
-    return total;
+    console.log('=== Final Total Calculation ===');
+    console.log('Subtotal after bundle:', calculateSubtotal());
+    console.log('Coupon discount:', appliedCoupon ? (appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discount}%` : `₹${appliedCoupon.discount}`) : 'None');
+    console.log('COD charges:', paymentMethod === 'cod' && codCharges > 0 ? codCharges : 0);
+    console.log('Final total:', total);
+    console.log('================================');
+    
+    return total || 0;
   };
 
   const handleInputChange = (e) => {
@@ -333,6 +535,31 @@ const Checkout = () => {
       ...shippingAddress,
       [e.target.name]: e.target.value
     });
+  };
+
+  const updateQuantity = async (itemId, newQuantity) => {
+    if (newQuantity < 1) return;
+    try {
+      await api.put(
+        `/api/cart/update/${itemId}`,
+        { quantity: newQuantity },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        }
+      );
+      // Refresh cart data
+      const updatedCart = await fetchCart(false);
+      // Manually trigger bundle offers refresh to ensure state updates immediately
+      if (updatedCart && updatedCart.items && updatedCart.items.length > 0) {
+        await fetchBundleOffers();
+      }
+      // Dispatch event to update cart count in navbar
+      window.dispatchEvent(new Event('cartUpdated'));
+    } catch (error) {
+      toast.error('Error updating cart');
+    }
   };
 
   // Lazy load Razorpay script ONLY when user clicks pay
@@ -398,13 +625,22 @@ const Checkout = () => {
           adjustedTotal: (() => {
             let total = cart?.total || 0;
             if (appliedBundleOffer) {
-              const bundleProductsTotal = appliedBundleOffer.matchingProducts.reduce((sum, match) => {
+              // Calculate total for products that get bundle pricing (at original price)
+              const bundleProductsTotal = (appliedBundleOffer.bundleProducts || []).reduce((sum, bundleProduct) => {
                 const cartItem = cart.items.find(item => 
-                  item.product._id === match.productId || item.product._id.toString() === match.productId
+                  item.product._id === bundleProduct.productId || item.product._id.toString() === bundleProduct.productId
                 );
-                return sum + (cartItem ? cartItem.price * cartItem.quantity : 0);
+                if (cartItem) {
+                  return sum + (bundleProduct.price * bundleProduct.quantity);
+                }
+                return sum;
               }, 0);
-              total = total - bundleProductsTotal + appliedBundleOffer.bundlePrice;
+              
+              // Replace bundle products total with total bundle price
+              // Use totalBundlePrice if available (for multiple bundles), otherwise use bundlePrice
+              // Note: originalPriceProducts (excess) and non-matching products remain at original price (already in cart.total)
+              const bundlePriceToApply = appliedBundleOffer.totalBundlePrice || appliedBundleOffer.bundlePrice;
+              total = total - bundleProductsTotal + bundlePriceToApply;
             }
             return total;
           })(),
@@ -707,10 +943,10 @@ const Checkout = () => {
               </div>
             </div>
 
-            {/* Bundle Offers Section */}
+            {/* Bundle & Carousel Offers Section */}
             {bundleOffers.length > 0 && (
               <div className="form-section offers-section-checkout">
-                <h2>📦 Bundle Offers</h2>
+                <h2>📦 Bundle & Carousel Offers</h2>
                 <div className="offers-container-checkout">
                   {bundleOffers.map((bundleOffer, index) => (
                     <div
@@ -722,7 +958,7 @@ const Checkout = () => {
                         <div className="offer-code-checkout">{bundleOffer.offer.code}</div>
                         <div className="offer-discount-checkout">
                           <span>
-                            {bundleOffer.offer.bundleDisplayText || 
+                            {bundleOffer.offer.carouselDisplayText || bundleOffer.offer.bundleDisplayText || 
                              `${bundleOffer.bundleQuantity || bundleOffer.offer.bundleQuantity || 'X'} products at ₹${bundleOffer.bundlePrice}`}
                           </span>
                           <div style={{ fontSize: '12px', marginTop: '4px' }}>
@@ -881,7 +1117,27 @@ const Checkout = () => {
                   </div>
                   <div className="summary-item-details">
                     <h4>{item.product?.name}</h4>
-                    <p>Qty: {item.quantity} × ₹{item.price}</p>
+                    <div className="summary-item-quantity-controls">
+                      <p>Price: ₹{item.price}</p>
+                      <div className="quantity-controls">
+                        <button
+                          className="quantity-btn"
+                          onClick={() => updateQuantity(item._id, item.quantity - 1)}
+                          disabled={item.quantity <= 1}
+                          aria-label="Decrease quantity"
+                        >
+                          <FiMinus />
+                        </button>
+                        <span className="quantity-value">{item.quantity}</span>
+                        <button
+                          className="quantity-btn"
+                          onClick={() => updateQuantity(item._id, item.quantity + 1)}
+                          aria-label="Increase quantity"
+                        >
+                          <FiPlus />
+                        </button>
+                      </div>
+                    </div>
                     {item.size && <p>Size: {item.size}</p>}
                     {item.color && (
                       <p className="summary-item-color">
@@ -901,70 +1157,149 @@ const Checkout = () => {
                 </div>
               ))}
             </div>
-            <div className="summary-subtotal">
-              <span>Subtotal:</span>
-              <span>₹{cart?.total || 0}</span>
-            </div>
-            {appliedBundleOffer && (
-              <div className="summary-bundle-discount">
-                <span>
-                  Bundle Offer ({appliedBundleOffer.offer.code}): 
-                  <span style={{ fontSize: '12px', display: 'block', color: '#666' }}>
-                    {appliedBundleOffer.matchingProducts.length} product(s) at bundle price
-                  </span>
-                </span>
-                <span>
-                  -₹{(() => {
-                    const bundleProductsTotal = appliedBundleOffer.matchingProducts.reduce((sum, match) => {
-                      const cartItem = cart.items.find(item => 
-                        item.product._id === match.productId || item.product._id.toString() === match.productId
-                      );
-                      return sum + (cartItem ? cartItem.price * cartItem.quantity : 0);
-                    }, 0);
-                    return (bundleProductsTotal - appliedBundleOffer.bundlePrice).toFixed(2);
-                  })()}
-                </span>
-              </div>
-            )}
-            {appliedCoupon && (
-              <div className="summary-coupon-discount">
-                <span>
-                  Discount ({appliedCoupon.code}): 
-                  {appliedCoupon.discountType === 'percentage' 
-                    ? ` -${appliedCoupon.discount}%` 
-                    : ` -₹${appliedCoupon.discount}`}
-                </span>
-                <span>
-                  -₹{(() => {
-                    let totalForDiscount = cart?.total || 0;
-                    // If bundle is applied, calculate discount on bundle-adjusted total
-                    if (appliedBundleOffer) {
-                      const bundleProductsTotal = appliedBundleOffer.matchingProducts.reduce((sum, match) => {
-                        const cartItem = cart.items.find(item => 
-                          item.product._id === match.productId || item.product._id.toString() === match.productId
-                        );
-                        return sum + (cartItem ? cartItem.price * cartItem.quantity : 0);
-                      }, 0);
-                      totalForDiscount = totalForDiscount - bundleProductsTotal + appliedBundleOffer.bundlePrice;
-                    }
-                    const discount = appliedCoupon.discountType === 'percentage'
-                      ? (totalForDiscount * appliedCoupon.discount) / 100
-                      : appliedCoupon.discount;
-                    return discount.toFixed(2);
-                  })()}
-                </span>
-              </div>
-            )}
-            {paymentMethod === 'cod' && codCharges > 0 && (
-              <div className="summary-cod-charges">
-                <span>COD Charges:</span>
-                <span>₹{codCharges.toFixed(2)}</span>
-              </div>
-            )}
-            <div className="summary-total">
-              <span>Total:</span>
-              <span>₹{calculateCartTotal().toFixed(2)}</span>
-            </div>
+            
+            {/* Order Summary Calculations */}
+            {(() => {
+              if (!cart) return null;
+              
+              // Calculate bundle price and original price products separately
+              let bundlePriceDisplay = 0;
+              let originalPriceProductsTotal = 0;
+              let nonMatchingProductsTotal = 0;
+              
+              if (appliedBundleOffer && cart.items) {
+                const bundlePriceToApply = appliedBundleOffer.totalBundlePrice || appliedBundleOffer.bundlePrice;
+                bundlePriceDisplay = bundlePriceToApply || 0;
+                
+                // Get matching product IDs
+                const matchingProductIds = (appliedBundleOffer.matchingProducts || []).map(m => m.productId?.toString());
+                
+                // Calculate original price products total (products not in bundle but matching the offer)
+                const originalPriceProducts = appliedBundleOffer.originalPriceProducts || [];
+                originalPriceProductsTotal = originalPriceProducts.reduce((sum, origProduct) => {
+                  return sum + (origProduct.price * origProduct.quantity);
+                }, 0);
+                
+                // Calculate non-matching products total (products not in the offer at all)
+                nonMatchingProductsTotal = cart.items.reduce((sum, item) => {
+                  const itemProductId = item.product?._id?.toString() || item.product?.toString();
+                  if (!matchingProductIds.includes(itemProductId)) {
+                    return sum + (item.price * item.quantity);
+                  }
+                  return sum;
+                }, 0);
+              } else {
+                // No bundle offer, show subtotal
+                nonMatchingProductsTotal = cart.total || 0;
+              }
+              
+              // Calculate coupon discount for display
+              const subtotalAfterBundle = calculateSubtotal();
+              let couponDiscountDisplay = 0;
+              if (appliedCoupon) {
+                if (appliedCoupon.discountType === 'percentage') {
+                  couponDiscountDisplay = (subtotalAfterBundle * appliedCoupon.discount) / 100;
+                } else {
+                  couponDiscountDisplay = appliedCoupon.discount;
+                }
+              }
+              
+              return (
+                <>
+                  {appliedBundleOffer && bundlePriceDisplay > 0 && (
+                    <div className="summary-bundle-price">
+                      <span>
+                        Bundle Offer ({appliedBundleOffer.offer.code}): 
+                        <span style={{ fontSize: '12px', display: 'block', color: '#666' }}>
+                          {(() => {
+                            const bundleQty = (appliedBundleOffer.bundleProducts || []).reduce((sum, p) => sum + p.quantity, 0);
+                            const originalQty = (appliedBundleOffer.originalPriceProducts || []).reduce((sum, p) => sum + p.quantity, 0);
+                            const numberOfBundles = appliedBundleOffer.numberOfBundles || 1;
+                            if (originalQty > 0) {
+                              return `${numberOfBundles} bundle(s) - ${bundleQty} product(s) at bundle price`;
+                            }
+                            return `${numberOfBundles} bundle(s) - ${bundleQty} product(s) at bundle price`;
+                          })()}
+                        </span>
+                      </span>
+                      <span>₹{bundlePriceDisplay.toFixed(2)}</span>
+                    </div>
+                  )}
+                  
+                  {appliedBundleOffer && originalPriceProductsTotal > 0 && (
+                    <div className="summary-original-price-products">
+                      <span>
+                        Products at Original Price: 
+                        <span style={{ fontSize: '12px', display: 'block', color: '#666' }}>
+                          {(() => {
+                            const originalQty = (appliedBundleOffer.originalPriceProducts || []).reduce((sum, p) => sum + p.quantity, 0);
+                            return `${originalQty} product(s) at original price`;
+                          })()}
+                        </span>
+                      </span>
+                      <span>₹{originalPriceProductsTotal.toFixed(2)}</span>
+                    </div>
+                  )}
+                  
+                  {appliedBundleOffer && nonMatchingProductsTotal > 0 && (
+                    <div className="summary-non-matching-products">
+                      <span>
+                        Other Products: 
+                        <span style={{ fontSize: '12px', display: 'block', color: '#666' }}>
+                          Products not in offer
+                        </span>
+                      </span>
+                      <span>₹{nonMatchingProductsTotal.toFixed(2)}</span>
+                    </div>
+                  )}
+                  
+                  {!appliedBundleOffer && (
+                    <div className="summary-subtotal">
+                      <span>Subtotal:</span>
+                      <span>₹{(cart.total || 0).toFixed(2)}</span>
+                    </div>
+                  )}
+                  
+                  {appliedCoupon && couponDiscountDisplay > 0 && (
+                    <div className="summary-coupon-discount">
+                      <span>
+                        Discount ({appliedCoupon.code}): 
+                        {appliedCoupon.discountType === 'percentage' 
+                          ? ` -${appliedCoupon.discount}%` 
+                          : ` -₹${appliedCoupon.discount}`}
+                      </span>
+                      <span>-₹{couponDiscountDisplay.toFixed(2)}</span>
+                    </div>
+                  )}
+                  
+                  {paymentMethod === 'cod' && codCharges > 0 && (
+                    <div className="summary-cod-charges">
+                      <span>COD Charges:</span>
+                      <span>₹{codCharges.toFixed(2)}</span>
+                    </div>
+                  )}
+                  
+                  <div className="summary-place-order-price">
+                    <span>Order Total:</span>
+                    <span>₹{(() => {
+                      // Use the same calculation as Place Order button
+                      const finalTotal = calculateCartTotal();
+                      
+                      // Debug: Verify the calculation
+                      console.log('=== Order Summary Total ===');
+                      console.log('Bundle Price Display:', bundlePriceDisplay);
+                      console.log('Original Price Products:', originalPriceProductsTotal);
+                      console.log('Non-Matching Products:', nonMatchingProductsTotal);
+                      console.log('Subtotal (from calculateSubtotal):', calculateSubtotal());
+                      console.log('Final Total (from calculateCartTotal):', finalTotal);
+                      console.log('===========================');
+                      
+                      return finalTotal.toFixed(2);
+                    })()}</span>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       </div>
