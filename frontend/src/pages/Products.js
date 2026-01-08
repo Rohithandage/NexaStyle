@@ -4,6 +4,7 @@ import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
 import { getOptimizedImageUrl } from '../utils/config';
+import { getProductPriceForCountry, formatPrice } from '../utils/currency';
 import './Products.css';
 
 // Color name to hex mapping
@@ -308,8 +309,12 @@ const Products = () => {
               )}
               <div className="products-grid">
                 {products.map((product) => {
-                  const discountPercent = product.discountPrice 
-                    ? Math.round(((product.price - product.discountPrice) / product.price) * 100) 
+                  // Get country-specific pricing
+                  const countryPricing = getProductPriceForCountry(product);
+                  const productPrice = countryPricing.price;
+                  const productDiscountPrice = countryPricing.discountPrice;
+                  const discountPercent = productDiscountPrice 
+                    ? Math.round(((productPrice - productDiscountPrice) / productPrice) * 100) 
                     : 0;
                   const brandName = product.name.split(' ')[0] || product.category;
 
@@ -368,14 +373,14 @@ const Products = () => {
                         <div className="product-info">
                           <h3 className="product-name">{product.name}</h3>
                           <div className="product-price-section">
-                            {product.discountPrice ? (
+                            {productDiscountPrice ? (
                               <>
-                                <span className="current-price">₹{product.discountPrice.toLocaleString('en-IN')}</span>
-                                <span className="mrp-price">₹{product.price.toLocaleString('en-IN')}</span>
+                                <span className="current-price">{formatPrice(productDiscountPrice, countryPricing.currency)}</span>
+                                <span className="mrp-price">{formatPrice(productPrice, countryPricing.currency)}</span>
                                 <span className="discount-percent">({discountPercent}% off)</span>
                               </>
                             ) : (
-                              <span className="current-price">₹{product.price.toLocaleString('en-IN')}</span>
+                              <span className="current-price">{formatPrice(productPrice, countryPricing.currency)}</span>
                             )}
                           </div>
                           <div className="free-delivery-text">Free Delivery</div>

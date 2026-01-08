@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
 import Reviews from '../components/Reviews';
 import { getOptimizedImageUrl } from '../utils/config';
+import { getProductPriceForCountry, getSizePriceForCountry, formatPrice, getUserCurrency } from '../utils/currency';
 import './ProductDetail.css';
 
 // Color name to hex mapping
@@ -530,34 +531,37 @@ const ProductDetail = () => {
             ⭐ {product.rating?.toFixed(1) || 0} ({product.numReviews || 0} reviews)
           </div>
           <div className="product-options">
-            <label>Price (₹):</label>
+            <label>Price:</label>
             <div className="product-price-section">
               {(() => {
-                // Always use the original product price for strikethrough
-                const originalPrice = product.price;
+                // Get country-specific pricing
+                const countryPricing = getProductPriceForCountry(product);
                 
-                // Get discount price - check size-specific first, then product-level
-                let displayDiscountPrice = product.discountPrice;
-                let currentPrice = product.price;
-                
-                if (product.sizes && product.sizes.length > 0 && selectedSize) {
-                  const selectedSizeObj = product.sizes.find(s => {
-                    const size = typeof s === 'string' ? s : s.size;
-                    return size === selectedSize;
-                  });
-                  
-                  if (selectedSizeObj && typeof selectedSizeObj === 'object') {
-                    currentPrice = selectedSizeObj.price;
-                    // Use size-specific discount price if available, otherwise fall back to product discount price
-                    displayDiscountPrice = selectedSizeObj.discountPrice || product.discountPrice;
-                  }
+                // Get size-specific pricing if size is selected
+                let sizePricing = null;
+                if (selectedSize) {
+                  sizePricing = getSizePriceForCountry(product, selectedSize);
                 }
                 
+                // Use size pricing currency if available, otherwise use product-level pricing currency
+                const currency = sizePricing ? sizePricing.currency : countryPricing.currency;
+                const symbol = sizePricing ? sizePricing.symbol : countryPricing.symbol;
+                
+                // Use size pricing if available, otherwise use product-level pricing
+                const originalPrice = sizePricing ? sizePricing.price : countryPricing.price;
+                const displayDiscountPrice = sizePricing 
+                  ? (sizePricing.discountPrice || countryPricing.discountPrice)
+                  : countryPricing.discountPrice;
+                
                 // Apply coupon discount if available
-                let finalPrice = displayDiscountPrice && displayDiscountPrice > 0 ? displayDiscountPrice : currentPrice;
+                let finalPrice = displayDiscountPrice && displayDiscountPrice > 0 ? displayDiscountPrice : originalPrice;
                 if (appliedCoupon) {
                   finalPrice = calculatePriceWithCoupon(finalPrice);
                 }
+                
+                // Format prices with currency
+                const formattedFinalPrice = formatPrice(finalPrice, currency);
+                const formattedOriginalPrice = formatPrice(originalPrice, currency);
                 
                 // Always show both original price (with strikethrough) and discount price when discount exists
                 if (displayDiscountPrice && displayDiscountPrice > 0) {
@@ -565,10 +569,16 @@ const ProductDetail = () => {
                     ? Math.round(((originalPrice - displayDiscountPrice) / originalPrice) * 100) 
                     : 0;
                   
+                  const couponDiscountText = appliedCoupon 
+                    ? (appliedCoupon.discountType === 'percentage' 
+                        ? `${appliedCoupon.discount}%` 
+                        : formatPrice(appliedCoupon.discount, currency))
+                    : '';
+                  
                   return (
                     <>
-                      <span className="discount-price">₹{finalPrice.toFixed(2)}</span>
-                      <span className="original-price">₹{originalPrice}</span>
+                      <span className="discount-price">{formattedFinalPrice}</span>
+                      <span className="original-price">{formattedOriginalPrice}</span>
                       {discountPercent > 0 && (
                         <span className="discount-percent">
                           {discountPercent}% OFF
@@ -576,18 +586,24 @@ const ProductDetail = () => {
                       )}
                       {appliedCoupon && (
                         <span className="coupon-applied-badge">
-                          + {appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discount}%` : `₹${appliedCoupon.discount}`} OFF (Coupon)
+                          + {couponDiscountText} OFF (Coupon)
                         </span>
                       )}
                     </>
                   );
                 } else {
+                  const couponDiscountText = appliedCoupon 
+                    ? (appliedCoupon.discountType === 'percentage' 
+                        ? `${appliedCoupon.discount}%` 
+                        : formatPrice(appliedCoupon.discount, currency))
+                    : '';
+                  
                   return (
                     <>
-                      <span className="price">₹{finalPrice.toFixed(2)}</span>
+                      <span className="price">{formattedFinalPrice}</span>
                       {appliedCoupon && (
                         <span className="coupon-applied-badge">
-                          {appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discount}%` : `₹${appliedCoupon.discount}`} OFF (Coupon)
+                          {couponDiscountText} OFF (Coupon)
                         </span>
                       )}
                     </>
@@ -609,8 +625,12 @@ const ProductDetail = () => {
                 {product.sizes.map((sizeItem, index) => {
                   // Handle both old format (string) and new format (object)
                   const size = typeof sizeItem === 'string' ? sizeItem : sizeItem.size;
-                  const sizePrice = typeof sizeItem === 'object' ? (sizeItem.discountPrice || sizeItem.price) : null;
                   const sizeStock = typeof sizeItem === 'object' ? sizeItem.stock : null;
+                  
+                  // Get country-specific pricing for size
+                  const sizePricing = getSizePriceForCountry(product, size);
+                  const displayPrice = sizePricing.discountPrice || sizePricing.price;
+                  const sizePriceFormatted = displayPrice ? formatPrice(displayPrice, sizePricing.currency) : '';
                   
                   return (
                     <button
@@ -618,11 +638,11 @@ const ProductDetail = () => {
                       onClick={() => setSelectedSize(size)}
                       className={selectedSize === size ? 'active' : ''}
                       disabled={sizeStock !== null && sizeStock === 0}
-                      title={sizePrice ? `₹${sizePrice}` : ''}
+                      title={sizePriceFormatted || ''}
                     >
                       {size}
-                      {sizePrice && (
-                        <span className="size-price-badge">₹{sizePrice}</span>
+                      {displayPrice && (
+                        <span className="size-price-badge">{sizePriceFormatted}</span>
                       )}
                     </button>
                   );

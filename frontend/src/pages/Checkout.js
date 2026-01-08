@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
 import { FiPlus, FiMinus } from 'react-icons/fi';
 import { getOptimizedImageUrl } from '../utils/config';
+import { getUserCurrency, getUserCountry, formatPrice, getSizePriceForCountry, getProductPriceForCountry, getBundlePriceForCountry } from '../utils/currency';
 import './Checkout.css';
 
 // Color name to hex mapping (same as ProductDetail and Cart)
@@ -89,8 +90,61 @@ const Checkout = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [cart, setCart] = useState(null);
-  const [paymentMethod, setPaymentMethod] = useState('card');
+  const fetchingBundleOffersRef = useRef(false);
+  // Determine default payment method based on country/currency
+  const getDefaultPaymentMethod = () => {
+    const selectedCurrency = localStorage.getItem('selectedCurrency') || getUserCurrency();
+    const userCountry = getUserCountry();
+    const country = userCountry.country || 'India';
+    
+    const paypalCountries = ['United States', 'USA', 'US', 'United Kingdom', 'UK', 'Canada', 'CA', 'Europe', 'EU'];
+    const showPaypal = paypalCountries.some(c => 
+      country.toLowerCase().includes(c.toLowerCase()) || 
+      c.toLowerCase().includes(country.toLowerCase()) ||
+      ['USD', 'GBP', 'CAD', 'EUR'].includes(selectedCurrency)
+    );
+    
+    return showPaypal ? 'paypal' : 'card';
+  };
+  const [paymentMethod, setPaymentMethod] = useState(getDefaultPaymentMethod());
   const [codCharges, setCodCharges] = useState(0);
+  
+  // Initialize country from selected currency or detected country
+  const getInitialCountry = () => {
+    const selectedCurrency = localStorage.getItem('selectedCurrency');
+    const currencyToCountry = {
+      'USD': 'USA',
+      'GBP': 'UK',
+      'CAD': 'Canada',
+      'EUR': 'Europe',
+      'INR': 'India'
+    };
+    
+    if (selectedCurrency && currencyToCountry[selectedCurrency]) {
+      return currencyToCountry[selectedCurrency];
+    }
+    
+    // Map detected country to our country values
+    const userCountry = getUserCountry();
+    const countryName = userCountry?.country || 'India';
+    const countryMapping = {
+      'United States': 'USA',
+      'USA': 'USA',
+      'US': 'USA',
+      'United Kingdom': 'UK',
+      'UK': 'UK',
+      'Canada': 'Canada',
+      'Europe': 'Europe',
+      'Germany': 'Europe',
+      'France': 'Europe',
+      'Italy': 'Europe',
+      'Spain': 'Europe',
+      'India': 'India'
+    };
+    
+    return countryMapping[countryName] || 'India';
+  };
+
   const [shippingAddress, setShippingAddress] = useState({
     firstName: '',
     lastName: '',
@@ -99,7 +153,7 @@ const Checkout = () => {
     state: '',
     townCity: '',
     postcode: '',
-    country: 'India'
+    country: getInitialCountry()
   });
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
@@ -112,11 +166,57 @@ const Checkout = () => {
   const [bundleOffers, setBundleOffers] = useState([]);
   const [appliedBundleOffer, setAppliedBundleOffer] = useState(null);
 
+  // Determine which payment methods to show based on selected currency/country
+  const getAvailablePaymentMethods = () => {
+    const selectedCurrency = localStorage.getItem('selectedCurrency') || getUserCurrency();
+    const userCountry = getUserCountry();
+    const country = userCountry.country || 'India';
+    
+    // PayPal is available for US, UK, Canada, and Europe
+    const paypalCountries = ['United States', 'USA', 'US', 'United Kingdom', 'UK', 'Canada', 'CA', 'Europe', 'EU', 'Germany', 'France', 'Italy', 'Spain'];
+    const showPaypal = paypalCountries.some(c => 
+      country.toLowerCase().includes(c.toLowerCase()) || 
+      c.toLowerCase().includes(country.toLowerCase()) ||
+      ['USD', 'GBP', 'CAD', 'EUR'].includes(selectedCurrency)
+    );
+    
+    // Check if country is India
+    const isIndia = country.toLowerCase().includes('india') || 
+                    country.toLowerCase() === 'in' ||
+                    selectedCurrency === 'INR';
+    
+    const methods = [];
+    
+    if (showPaypal) {
+      methods.push({ value: 'paypal', label: 'PayPal (Credit/Debit Card)' });
+    } else {
+      // For India and other countries, show card/upi
+      methods.push({ value: 'card', label: 'Credit/Debit Card' });
+      methods.push({ value: 'upi', label: 'UPI' });
+    }
+    
+    // COD is only available for India
+    if (isIndia) {
+      methods.push({ value: 'cod', label: 'Cash on Delivery (COD)' });
+    }
+    
+    return methods;
+  };
+
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/login');
       return;
     }
+    
+    // Check if payment was canceled
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('canceled') === 'true') {
+      toast.info('Payment was canceled. You can try again.');
+      // Remove canceled parameter from URL
+      window.history.replaceState({}, '', '/checkout');
+    }
+    
     fetchCart();
     fetchCodCharges();
     fetchOffers();
@@ -146,8 +246,71 @@ const Checkout = () => {
     };
   }, [isAuthenticated]);
 
+  // Update payment method and country when currency changes
+  useEffect(() => {
+    const handleCurrencyChange = () => {
+      const availableMethods = getAvailablePaymentMethods();
+      const currentMethod = paymentMethod;
+      
+      // If current payment method is not available, switch to first available method
+      if (!availableMethods.find(m => m.value === currentMethod)) {
+        // If COD was selected but not available (user changed from India to other country), switch to first available method
+        if (currentMethod === 'cod') {
+          setPaymentMethod(availableMethods[0]?.value || 'card');
+        } else {
+          setPaymentMethod(availableMethods[0]?.value || 'card');
+        }
+      }
+      
+      // Update country field based on selected currency
+      const selectedCurrency = localStorage.getItem('selectedCurrency');
+      const currencyToCountry = {
+        'USD': 'USA',
+        'GBP': 'UK',
+        'CAD': 'Canada',
+        'EUR': 'Europe',
+        'INR': 'India',
+        'CNY': 'China'
+      };
+      
+      if (selectedCurrency && currencyToCountry[selectedCurrency]) {
+        const country = currencyToCountry[selectedCurrency];
+        setShippingAddress(prev => ({
+          ...prev,
+          country: country
+        }));
+        localStorage.setItem('userCountry', country);
+        // Mark that the user manually selected country/currency
+        localStorage.setItem('userCountryManual', 'true');
+      }
+      
+      // Note: Prices are calculated dynamically using getItemPrice() which reads from localStorage
+      // So we don't need to update cart state - the component will re-render naturally
+    };
+
+    // Listen for currency change events
+    window.addEventListener('currencyChanged', handleCurrencyChange);
+    
+    // Listen for storage changes (currency selection)
+    const handleStorageChange = (e) => {
+      if (e.key === 'selectedCurrency' || e.key === 'userCountry') {
+        handleCurrencyChange();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Also check on mount
+    handleCurrencyChange();
+
+    return () => {
+      window.removeEventListener('currencyChanged', handleCurrencyChange);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [paymentMethod]);
+
   useEffect(() => {
     if (cart && cart.items && cart.items.length > 0) {
+      // Only fetch if cart has items and we haven't fetched recently
       fetchBundleOffers();
     } else {
       setBundleOffers([]);
@@ -158,7 +321,8 @@ const Checkout = () => {
         navigate('/cart');
       }
     }
-  }, [cart, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart?.items?.length, navigate]);
 
   const fetchCart = async (showEmptyMessage = true) => {
     try {
@@ -227,15 +391,34 @@ const Checkout = () => {
   };
 
   const fetchBundleOffers = async () => {
+    // Prevent multiple simultaneous calls
+    if (fetchingBundleOffersRef.current) {
+      return;
+    }
+    
+    fetchingBundleOffersRef.current = true;
     try {
+      const userCountry = getUserCountry();
+      const selectedCurrency = localStorage.getItem('selectedCurrency') || getUserCurrency();
       const res = await api.get('/api/cart/bundle-offers', {
+        params: {
+          country: userCountry.country,
+          currency: selectedCurrency
+        },
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
       });
+      // Backend already filters by country and validates country-specific pricing exists
+      // Trust the backend results - if it returns an offer, it means country-specific pricing exists
       const applicableOffers = res.data.applicableOffers || [];
-      console.log('Fetched applicable offers:', applicableOffers.length, applicableOffers);
-      console.log('Offer types:', applicableOffers.map(o => ({ code: o.offer?.code, type: o.offer?.offerType })));
+      console.log('📦 Bundle offers received from backend:', applicableOffers.length, 'for country:', userCountry.country);
+      if (applicableOffers.length > 0) {
+        console.log('📦 Offer codes:', applicableOffers.map(o => o.offer?.code));
+      }
+      // Removed console.log to prevent spam - uncomment for debugging if needed
+      // console.log('Fetched applicable offers:', applicableOffers.length, applicableOffers);
+      // console.log('Offer types:', applicableOffers.map(o => ({ code: o.offer?.code, type: o.offer?.offerType })));
       setBundleOffers(applicableOffers);
       
       // Check if currently applied bundle offer is still valid
@@ -243,10 +426,17 @@ const Checkout = () => {
         const stillValid = applicableOffers.find(
           offer => offer.offer._id === appliedBundleOffer.offer._id
         );
-        if (!stillValid) {
-          // Offer is no longer valid, clear it
+        // Also verify country-specific pricing exists
+        const countryBundlePricing = getBundlePriceForCountry(appliedBundleOffer.offer);
+        
+        if (!stillValid || countryBundlePricing === null) {
+          // Offer is no longer valid or doesn't have country-specific pricing, clear it
           setAppliedBundleOffer(null);
-          toast.info('Bundle offer is no longer applicable');
+          if (countryBundlePricing === null) {
+            toast.info('Bundle offer is not available for your country');
+          } else {
+            toast.info('Bundle offer is no longer applicable');
+          }
         } else {
           // Update the applied offer with latest data
           setAppliedBundleOffer(stillValid);
@@ -264,7 +454,7 @@ const Checkout = () => {
           setAppliedBundleOffer(applicableOffers[0]);
           const offerType = applicableOffers[0].offer?.offerType === 'carousel' ? 'Carousel' : 'Bundle';
           const savings = (applicableOffers[0].originalTotal - (applicableOffers[0].totalBundlePrice || applicableOffers[0].bundlePrice)).toFixed(2);
-          toast.success(`${offerType} offer applied! Save ₹${savings}`);
+          toast.success(`${offerType} offer applied! Save ${formatPrice(parseFloat(savings))}`);
           // Debug logging
           console.log('Applied bundle offer:', {
             bundleProducts: applicableOffers[0].bundleProducts,
@@ -276,6 +466,8 @@ const Checkout = () => {
       }
     } catch (error) {
       console.error('Error fetching bundle offers:', error);
+    } finally {
+      fetchingBundleOffersRef.current = false;
     }
   };
 
@@ -356,6 +548,22 @@ const Checkout = () => {
     toast.info('Coupon removed');
   };
 
+  // Helper function to get recalculated price for a cart item
+  const getItemPrice = (item) => {
+    const product = item.product;
+    if (!product) return item.price;
+    
+    if (item.size) {
+      // Get size-specific pricing
+      const sizePricing = getSizePriceForCountry(product, item.size);
+      return sizePricing.discountPrice || sizePricing.price;
+    } else {
+      // Get product-level pricing
+      const countryPricing = getProductPriceForCountry(product);
+      return countryPricing.discountPrice || countryPricing.price;
+    }
+  };
+
   // Calculate subtotal with bundle pricing applied (before coupon and COD charges)
   // Example: 2 products at ₹399 each, bundle offer: 2 products at ₹499
   // - cart.total = ₹798 (all at original price)
@@ -377,8 +585,11 @@ const Checkout = () => {
   const calculateSubtotal = () => {
     if (!cart) return 0;
     
-    // Start with cart total (all products at original price)
-    let subtotal = cart.total || 0;
+    // Recalculate total based on current currency
+    let subtotal = 0;
+    cart.items.forEach(item => {
+      subtotal += getItemPrice(item) * item.quantity;
+    });
     
     // Apply bundle pricing if applicable
     if (appliedBundleOffer && cart.items) {
@@ -389,7 +600,7 @@ const Checkout = () => {
       const matchingProductsTotal = cart.items.reduce((sum, item) => {
         const itemProductId = item.product?._id?.toString() || item.product?.toString();
         if (matchingProductIds.includes(itemProductId)) {
-          return sum + (item.price * item.quantity);
+          return sum + (getItemPrice(item) * item.quantity);
         }
         return sum;
       }, 0);
@@ -404,8 +615,19 @@ const Checkout = () => {
         return sum + (origProduct.price * origProduct.quantity);
       }, 0);
       
+      // Get country-specific bundle price
+      const countryBundlePricing = getBundlePriceForCountry(appliedBundleOffer.offer);
+      
+      // If country-specific pricing doesn't exist, don't apply bundle offer
+      if (countryBundlePricing === null) {
+        // Recalculate without bundle pricing
+        return cart.items.reduce((sum, item) => {
+          return sum + (getItemPrice(item) * item.quantity);
+        }, 0);
+      }
+      
       // Get total bundle price to apply
-      const bundlePriceToApply = appliedBundleOffer.totalBundlePrice || appliedBundleOffer.bundlePrice;
+      const bundlePriceToApply = appliedBundleOffer.totalBundlePrice || (countryBundlePricing.bundlePrice * (appliedBundleOffer.numberOfBundles || 1)) || 0;
       
       // Verify the breakdown is correct
       const breakdownTotal = bundleProductsTotal + originalPriceProductsTotal;
@@ -461,7 +683,7 @@ const Checkout = () => {
         const itemProductId = item.product?._id?.toString() || item.product?.toString();
         if (matchingProductIds.includes(itemProductId) && remainingForBundle > 0) {
           const quantityForBundle = Math.min(item.quantity, remainingForBundle);
-          recalculatedBundleProductsTotal += item.price * quantityForBundle;
+          recalculatedBundleProductsTotal += getItemPrice(item) * quantityForBundle;
           remainingForBundle -= quantityForBundle;
         }
       }
@@ -522,7 +744,7 @@ const Checkout = () => {
     
     console.log('=== Final Total Calculation ===');
     console.log('Subtotal after bundle:', calculateSubtotal());
-    console.log('Coupon discount:', appliedCoupon ? (appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discount}%` : `₹${appliedCoupon.discount}`) : 'None');
+    console.log('Coupon discount:', appliedCoupon ? (appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discount}%` : formatPrice(appliedCoupon.discount)) : 'None');
     console.log('COD charges:', paymentMethod === 'cod' && codCharges > 0 ? codCharges : 0);
     console.log('Final total:', total);
     console.log('================================');
@@ -531,10 +753,62 @@ const Checkout = () => {
   };
 
   const handleInputChange = (e) => {
-    setShippingAddress({
-      ...shippingAddress,
-      [e.target.name]: e.target.value
-    });
+    const { name, value } = e.target;
+    
+    // If country is changed, clear state if not India and update currency
+    if (name === 'country') {
+      setShippingAddress({
+        ...shippingAddress,
+        [name]: value,
+        state: value === 'India' ? shippingAddress.state : ''
+      });
+      
+      const countryCurrencyMap = {
+        'USA': 'USD',
+        'United States': 'USD',
+        'US': 'USD',
+        'UK': 'GBP',
+        'United Kingdom': 'GBP',
+        'Canada': 'CAD',
+        'Europe': 'EUR',
+        'Germany': 'EUR',
+        'France': 'EUR',
+        'Italy': 'EUR',
+        'Spain': 'EUR',
+        'Netherlands': 'EUR',
+        'Belgium': 'EUR',
+        'Austria': 'EUR',
+        'Portugal': 'EUR',
+        'India': 'INR'
+      };
+      
+      const selectedCurrency = countryCurrencyMap[value] || getUserCurrency();
+      
+      // Update currency in localStorage
+      localStorage.setItem('selectedCurrency', selectedCurrency);
+      localStorage.setItem('userCountry', value);
+      
+      // Dispatch event to update currency across the app
+      window.dispatchEvent(new Event('currencyChanged'));
+      
+      // Force re-render to update prices
+      if (cart) {
+        setCart({ ...cart });
+      }
+      
+      // Update payment methods based on new currency
+      const availableMethods = getAvailablePaymentMethods();
+      const currentMethod = paymentMethod;
+      if (!availableMethods.find(m => m.value === currentMethod)) {
+        setPaymentMethod(availableMethods[0]?.value || 'cod');
+      }
+    } else {
+      // Update shipping address for all other fields
+      setShippingAddress({
+        ...shippingAddress,
+        [name]: value
+      });
+    }
   };
 
   const updateQuantity = async (itemId, newQuantity) => {
@@ -622,28 +896,7 @@ const Checkout = () => {
           shippingAddress,
           paymentMethod,
           bundleOfferId: appliedBundleOffer?.offer._id,
-          adjustedTotal: (() => {
-            let total = cart?.total || 0;
-            if (appliedBundleOffer) {
-              // Calculate total for products that get bundle pricing (at original price)
-              const bundleProductsTotal = (appliedBundleOffer.bundleProducts || []).reduce((sum, bundleProduct) => {
-                const cartItem = cart.items.find(item => 
-                  item.product._id === bundleProduct.productId || item.product._id.toString() === bundleProduct.productId
-                );
-                if (cartItem) {
-                  return sum + (bundleProduct.price * bundleProduct.quantity);
-                }
-                return sum;
-              }, 0);
-              
-              // Replace bundle products total with total bundle price
-              // Use totalBundlePrice if available (for multiple bundles), otherwise use bundlePrice
-              // Note: originalPriceProducts (excess) and non-matching products remain at original price (already in cart.total)
-              const bundlePriceToApply = appliedBundleOffer.totalBundlePrice || appliedBundleOffer.bundlePrice;
-              total = total - bundleProductsTotal + bundlePriceToApply;
-            }
-            return total;
-          })(),
+          adjustedTotal: calculateCartTotal(),
           couponCode: appliedCoupon?.code
         },
         {
@@ -653,6 +906,19 @@ const Checkout = () => {
         }
       );
 
+      // Handle PayPal payments (US/UK/Canada/Europe)
+      if (paymentMethod === 'paypal') {
+        if (res.data.approvalUrl) {
+          // Redirect to PayPal Checkout
+          window.location.href = res.data.approvalUrl;
+        } else {
+          toast.error('Failed to create PayPal payment session');
+          setProcessing(false);
+        }
+        return;
+      }
+
+      // Handle Razorpay payments (India - card/upi)
       if (paymentMethod === 'card' || paymentMethod === 'upi') {
         try {
           // Load Razorpay ONLY when user clicks pay (lazy loading)
@@ -788,8 +1054,10 @@ const Checkout = () => {
       }
     } catch (error) {
       console.error('Error placing order:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Error placing order';
-      toast.error(errorMessage);
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Error placing order';
+      const errorHint = error.response?.data?.hint || '';
+      toast.error(errorHint ? `${errorMessage}. ${errorHint}` : errorMessage);
+      console.error('Full error response:', error.response?.data);
       setProcessing(false);
     }
   };
@@ -841,54 +1109,68 @@ const Checkout = () => {
                   rows="3"
                 />
               </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>State *</label>
-                  <select
-                    name="state"
-                    value={shippingAddress.state}
-                    onChange={handleInputChange}
-                    required
-                  >
-                    <option value="">Select State</option>
-                    <option value="Andhra Pradesh">Andhra Pradesh</option>
-                    <option value="Arunachal Pradesh">Arunachal Pradesh</option>
-                    <option value="Assam">Assam</option>
-                    <option value="Bihar">Bihar</option>
-                    <option value="Chhattisgarh">Chhattisgarh</option>
-                    <option value="Goa">Goa</option>
-                    <option value="Gujarat">Gujarat</option>
-                    <option value="Haryana">Haryana</option>
-                    <option value="Himachal Pradesh">Himachal Pradesh</option>
-                    <option value="Jharkhand">Jharkhand</option>
-                    <option value="Karnataka">Karnataka</option>
-                    <option value="Kerala">Kerala</option>
-                    <option value="Madhya Pradesh">Madhya Pradesh</option>
-                    <option value="Maharashtra">Maharashtra</option>
-                    <option value="Manipur">Manipur</option>
-                    <option value="Meghalaya">Meghalaya</option>
-                    <option value="Mizoram">Mizoram</option>
-                    <option value="Nagaland">Nagaland</option>
-                    <option value="Odisha">Odisha</option>
-                    <option value="Punjab">Punjab</option>
-                    <option value="Rajasthan">Rajasthan</option>
-                    <option value="Sikkim">Sikkim</option>
-                    <option value="Tamil Nadu">Tamil Nadu</option>
-                    <option value="Telangana">Telangana</option>
-                    <option value="Tripura">Tripura</option>
-                    <option value="Uttar Pradesh">Uttar Pradesh</option>
-                    <option value="Uttarakhand">Uttarakhand</option>
-                    <option value="West Bengal">West Bengal</option>
-                    <option value="Andaman and Nicobar Islands">Andaman and Nicobar Islands</option>
-                    <option value="Chandigarh">Chandigarh</option>
-                    <option value="Dadra and Nagar Haveli and Daman and Diu">Dadra and Nagar Haveli and Daman and Diu</option>
-                    <option value="Delhi">Delhi</option>
-                    <option value="Jammu and Kashmir">Jammu and Kashmir</option>
-                    <option value="Ladakh">Ladakh</option>
-                    <option value="Lakshadweep">Lakshadweep</option>
-                    <option value="Puducherry">Puducherry</option>
-                  </select>
+              {shippingAddress.country === 'India' ? (
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>State *</label>
+                    <select
+                      name="state"
+                      value={shippingAddress.state}
+                      onChange={handleInputChange}
+                      required
+                    >
+                      <option value="">Select State</option>
+                      <option value="Andhra Pradesh">Andhra Pradesh</option>
+                      <option value="Arunachal Pradesh">Arunachal Pradesh</option>
+                      <option value="Assam">Assam</option>
+                      <option value="Bihar">Bihar</option>
+                      <option value="Chhattisgarh">Chhattisgarh</option>
+                      <option value="Goa">Goa</option>
+                      <option value="Gujarat">Gujarat</option>
+                      <option value="Haryana">Haryana</option>
+                      <option value="Himachal Pradesh">Himachal Pradesh</option>
+                      <option value="Jharkhand">Jharkhand</option>
+                      <option value="Karnataka">Karnataka</option>
+                      <option value="Kerala">Kerala</option>
+                      <option value="Madhya Pradesh">Madhya Pradesh</option>
+                      <option value="Maharashtra">Maharashtra</option>
+                      <option value="Manipur">Manipur</option>
+                      <option value="Meghalaya">Meghalaya</option>
+                      <option value="Mizoram">Mizoram</option>
+                      <option value="Nagaland">Nagaland</option>
+                      <option value="Odisha">Odisha</option>
+                      <option value="Punjab">Punjab</option>
+                      <option value="Rajasthan">Rajasthan</option>
+                      <option value="Sikkim">Sikkim</option>
+                      <option value="Tamil Nadu">Tamil Nadu</option>
+                      <option value="Telangana">Telangana</option>
+                      <option value="Tripura">Tripura</option>
+                      <option value="Uttar Pradesh">Uttar Pradesh</option>
+                      <option value="Uttarakhand">Uttarakhand</option>
+                      <option value="West Bengal">West Bengal</option>
+                      <option value="Andaman and Nicobar Islands">Andaman and Nicobar Islands</option>
+                      <option value="Chandigarh">Chandigarh</option>
+                      <option value="Dadra and Nagar Haveli and Daman and Diu">Dadra and Nagar Haveli and Daman and Diu</option>
+                      <option value="Delhi">Delhi</option>
+                      <option value="Jammu and Kashmir">Jammu and Kashmir</option>
+                      <option value="Ladakh">Ladakh</option>
+                      <option value="Lakshadweep">Lakshadweep</option>
+                      <option value="Puducherry">Puducherry</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Town / City *</label>
+                    <input
+                      type="text"
+                      name="townCity"
+                      value={shippingAddress.townCity}
+                      onChange={handleInputChange}
+                      placeholder="Enter your city"
+                      required
+                    />
+                  </div>
                 </div>
+              ) : (
                 <div className="form-group">
                   <label>Town / City *</label>
                   <input
@@ -900,7 +1182,7 @@ const Checkout = () => {
                     required
                   />
                 </div>
-              </div>
+              )}
               <div className="form-group">
                 <label>Country *</label>
                 <select
@@ -910,12 +1192,15 @@ const Checkout = () => {
                   required
                 >
                   <option value="India">India</option>
-                  <option value="United States">United States</option>
-                  <option value="United Kingdom">United Kingdom</option>
+                  <option value="USA">USA</option>
+                  <option value="UK">UK</option>
                   <option value="Canada">Canada</option>
-                  <option value="Australia">Australia</option>
+                  <option value="Europe">Europe</option>
                   <option value="Germany">Germany</option>
                   <option value="France">France</option>
+                  <option value="Italy">Italy</option>
+                  <option value="Spain">Spain</option>
+                  <option value="Australia">Australia</option>
                   <option value="Other">Other</option>
                 </select>
               </div>
@@ -958,11 +1243,20 @@ const Checkout = () => {
                         <div className="offer-code-checkout">{bundleOffer.offer.code}</div>
                         <div className="offer-discount-checkout">
                           <span>
-                            {bundleOffer.offer.carouselDisplayText || bundleOffer.offer.bundleDisplayText || 
-                             `${bundleOffer.bundleQuantity || bundleOffer.offer.bundleQuantity || 'X'} products at ₹${bundleOffer.bundlePrice}`}
+                            {bundleOffer.offer.carouselDisplayText || bundleOffer.offer.bundleDisplayText || (() => {
+                              const countryBundlePricing = getBundlePriceForCountry(bundleOffer.offer);
+                              const bundlePricePerBundle = countryBundlePricing?.bundlePrice || bundleOffer.bundlePrice || 0;
+                              return `${bundleOffer.bundleQuantity || bundleOffer.offer.bundleQuantity || 'X'} products at ${formatPrice(bundlePricePerBundle, countryBundlePricing?.currency || getUserCurrency())}`;
+                            })()}
                           </span>
                           <div style={{ fontSize: '12px', marginTop: '4px' }}>
-                            Save ₹{(bundleOffer.originalTotal - bundleOffer.bundlePrice).toFixed(2)} on {bundleOffer.matchingProducts.length} product(s)
+                            {(() => {
+                              const countryBundlePricing = getBundlePriceForCountry(bundleOffer.offer);
+                              const bundlePricePerBundle = countryBundlePricing?.bundlePrice || bundleOffer.bundlePrice || 0;
+                              const numberOfBundles = bundleOffer.numberOfBundles || 1;
+                              const totalBundlePrice = bundlePricePerBundle * numberOfBundles;
+                              return `Save ${formatPrice(bundleOffer.originalTotal - totalBundlePrice, countryBundlePricing?.currency || getUserCurrency())} on ${bundleOffer.matchingProducts.length} product(s)`;
+                            })()}
                           </div>
                         </div>
                         {bundleOffer.offer.description && (
@@ -976,7 +1270,11 @@ const Checkout = () => {
                               toast.info('Bundle offer removed');
                             } else {
                               setAppliedBundleOffer(bundleOffer);
-                              toast.success(`Bundle offer applied! Save ₹${(bundleOffer.originalTotal - bundleOffer.bundlePrice).toFixed(2)}`);
+                              const countryBundlePricing = getBundlePriceForCountry(bundleOffer.offer);
+                              const bundlePricePerBundle = countryBundlePricing?.bundlePrice || bundleOffer.bundlePrice || 0;
+                              const numberOfBundles = bundleOffer.numberOfBundles || 1;
+                              const totalBundlePrice = bundlePricePerBundle * numberOfBundles;
+                              toast.success(`Bundle offer applied! Save ${formatPrice(bundleOffer.originalTotal - totalBundlePrice, countryBundlePricing?.currency || getUserCurrency())}`);
                             }
                           }}
                         >
@@ -1007,7 +1305,7 @@ const Checkout = () => {
                             {offer.couponDisplayText || 
                              (offer.discountType === 'percentage' 
                                ? `${offer.discount}% OFF` 
-                               : `₹${offer.discount} OFF`)}
+                               : `${formatPrice(offer.discount)} OFF`)}
                           </span>
                         </div>
                         {offer.description && (
@@ -1029,39 +1327,21 @@ const Checkout = () => {
             <div className="form-section">
               <h2>Payment Method</h2>
               <div className="payment-options">
-                <label className="payment-option">
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    value="card"
-                    checked={paymentMethod === 'card'}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                  />
-                  <span>Credit/Debit Card</span>
-                </label>
-                <label className="payment-option">
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    value="upi"
-                    checked={paymentMethod === 'upi'}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                  />
-                  <span>UPI</span>
-                </label>
-                <label className="payment-option">
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    value="cod"
-                    checked={paymentMethod === 'cod'}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                  />
-                  <span>Cash on Delivery (COD)</span>
-                  {paymentMethod === 'cod' && codCharges > 0 && (
-                    <span className="cod-charge-badge">+ ₹{codCharges.toFixed(2)} extra charges</span>
-                  )}
-                </label>
+                {getAvailablePaymentMethods().map((method) => (
+                  <label key={method.value} className="payment-option">
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value={method.value}
+                      checked={paymentMethod === method.value}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                    />
+                    <span>{method.label}</span>
+                    {method.value === 'cod' && paymentMethod === 'cod' && codCharges > 0 && (
+                      <span className="cod-charge-badge">+ {formatPrice(codCharges)} extra charges</span>
+                    )}
+                  </label>
+                ))}
               </div>
             </div>
 
@@ -1078,84 +1358,103 @@ const Checkout = () => {
               className="place-order-btn"
               disabled={processing}
             >
-              {processing ? 'Processing...' : `Place Order - ₹${calculateCartTotal().toFixed(2)}`}
+              {processing ? 'Processing...' : `Place Order - ${formatPrice(calculateCartTotal())}`}
             </button>
           </form>
 
           <div className="order-summary">
             <h2>Order Summary</h2>
             <div className="summary-items">
-              {cart?.items.map((item) => (
-                <div key={item._id} className="summary-item">
-                  <div className="summary-item-image">
-                    {(() => {
-                      // Use selectedImage if available (color-specific), otherwise fall back to first product image
-                      const imageToShow = item.selectedImage || (item.product?.images?.[0]);
-                      return imageToShow ? (
-                        <img 
-                          src={getOptimizedImageUrl(imageToShow, 300)} 
-                          alt={item.product?.name || 'Product'}
-                          loading="lazy"
-                          decoding="async"
-                          width="300"
-                          height="300"
-                          style={{
-                            width: "100%",
-                            aspectRatio: "1 / 1",
-                            objectFit: "cover",
-                            backgroundColor: "#f2f2f2"
-                          }}
-                          onError={(e) => {
-                            e.target.onerror = null;
-                            e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
-                          }}
-                        />
-                      ) : (
-                        <div className="placeholder-image">No Image</div>
-                      );
-                    })()}
-                  </div>
-                  <div className="summary-item-details">
-                    <h4>{item.product?.name}</h4>
-                    <div className="summary-item-quantity-controls">
-                      <p>Price: ₹{item.price}</p>
-                      <div className="quantity-controls">
-                        <button
-                          className="quantity-btn"
-                          onClick={() => updateQuantity(item._id, item.quantity - 1)}
-                          disabled={item.quantity <= 1}
-                          aria-label="Decrease quantity"
-                        >
-                          <FiMinus />
-                        </button>
-                        <span className="quantity-value">{item.quantity}</span>
-                        <button
-                          className="quantity-btn"
-                          onClick={() => updateQuantity(item._id, item.quantity + 1)}
-                          aria-label="Increase quantity"
-                        >
-                          <FiPlus />
-                        </button>
-                      </div>
+              {cart?.items.map((item) => {
+                // Recalculate price based on selected currency and size
+                const itemPrice = getItemPrice(item);
+                const product = item.product;
+                let itemCurrency = getUserCurrency();
+                
+                if (product) {
+                  if (item.size) {
+                    // Get size-specific pricing for currency
+                    const sizePricing = getSizePriceForCountry(product, item.size);
+                    itemCurrency = sizePricing.currency;
+                  } else {
+                    // Get product-level pricing for currency
+                    const countryPricing = getProductPriceForCountry(product);
+                    itemCurrency = countryPricing.currency;
+                  }
+                }
+                
+                return (
+                  <div key={item._id} className="summary-item">
+                    <div className="summary-item-image">
+                      {(() => {
+                        // Use selectedImage if available (color-specific), otherwise fall back to first product image
+                        const imageToShow = item.selectedImage || (item.product?.images?.[0]);
+                        return imageToShow ? (
+                          <img 
+                            src={getOptimizedImageUrl(imageToShow, 300)} 
+                            alt={item.product?.name || 'Product'}
+                            loading="lazy"
+                            decoding="async"
+                            width="300"
+                            height="300"
+                            style={{
+                              width: "100%",
+                              aspectRatio: "1 / 1",
+                              objectFit: "cover",
+                              backgroundColor: "#f2f2f2"
+                            }}
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                            }}
+                          />
+                        ) : (
+                          <div className="placeholder-image">No Image</div>
+                        );
+                      })()}
                     </div>
-                    {item.size && <p>Size: {item.size}</p>}
-                    {item.color && (
-                      <p className="summary-item-color">
-                        Color: {item.color}
-                        <span 
-                          className="summary-color-swatch"
-                          style={{ 
-                            backgroundColor: getColorValue(item.color),
-                            borderColor: '#ddd'
-                          }}
-                          title={item.color}
-                        ></span>
-                      </p>
-                    )}
+                    <div className="summary-item-details">
+                      <h4>{item.product?.name}</h4>
+                      <div className="summary-item-quantity-controls">
+                        <p>Price: {formatPrice(itemPrice, itemCurrency)}</p>
+                        <div className="quantity-controls">
+                          <button
+                            className="quantity-btn"
+                            onClick={() => updateQuantity(item._id, item.quantity - 1)}
+                            disabled={item.quantity <= 1}
+                            aria-label="Decrease quantity"
+                          >
+                            <FiMinus />
+                          </button>
+                          <span className="quantity-value">{item.quantity}</span>
+                          <button
+                            className="quantity-btn"
+                            onClick={() => updateQuantity(item._id, item.quantity + 1)}
+                            aria-label="Increase quantity"
+                          >
+                            <FiPlus />
+                          </button>
+                        </div>
+                      </div>
+                      {item.size && <p>Size: {item.size}</p>}
+                      {item.color && (
+                        <p className="summary-item-color">
+                          Color: {item.color}
+                          <span 
+                            className="summary-color-swatch"
+                            style={{ 
+                              backgroundColor: getColorValue(item.color),
+                              borderColor: '#ddd'
+                            }}
+                            title={item.color}
+                          ></span>
+                        </p>
+                      )}
+                    </div>
+                    <span className="summary-item-price">{formatPrice(itemPrice * item.quantity, itemCurrency)}</span>
                   </div>
-                  <span className="summary-item-price">₹{item.price * item.quantity}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
             
             {/* Order Summary Calculations */}
@@ -1168,8 +1467,18 @@ const Checkout = () => {
               let nonMatchingProductsTotal = 0;
               
               if (appliedBundleOffer && cart.items) {
-                const bundlePriceToApply = appliedBundleOffer.totalBundlePrice || appliedBundleOffer.bundlePrice;
-                bundlePriceDisplay = bundlePriceToApply || 0;
+                // Get country-specific bundle price
+                const countryBundlePricing = getBundlePriceForCountry(appliedBundleOffer.offer);
+                
+                // If country-specific pricing doesn't exist, don't show bundle offer
+                if (countryBundlePricing === null) {
+                  bundlePriceDisplay = 0;
+                } else {
+                  const bundlePricePerBundle = countryBundlePricing.bundlePrice || 0;
+                  const numberOfBundles = appliedBundleOffer.numberOfBundles || 1;
+                  const bundlePriceToApply = bundlePricePerBundle * numberOfBundles;
+                  bundlePriceDisplay = bundlePriceToApply || 0;
+                }
                 
                 // Get matching product IDs
                 const matchingProductIds = (appliedBundleOffer.matchingProducts || []).map(m => m.productId?.toString());
@@ -1184,13 +1493,15 @@ const Checkout = () => {
                 nonMatchingProductsTotal = cart.items.reduce((sum, item) => {
                   const itemProductId = item.product?._id?.toString() || item.product?.toString();
                   if (!matchingProductIds.includes(itemProductId)) {
-                    return sum + (item.price * item.quantity);
+                    return sum + (getItemPrice(item) * item.quantity);
                   }
                   return sum;
                 }, 0);
               } else {
-                // No bundle offer, show subtotal
-                nonMatchingProductsTotal = cart.total || 0;
+                // No bundle offer, recalculate total based on current currency
+                nonMatchingProductsTotal = cart.items.reduce((sum, item) => {
+                  return sum + (getItemPrice(item) * item.quantity);
+                }, 0);
               }
               
               // Calculate coupon discount for display
@@ -1206,25 +1517,32 @@ const Checkout = () => {
               
               return (
                 <>
-                  {appliedBundleOffer && bundlePriceDisplay > 0 && (
-                    <div className="summary-bundle-price">
-                      <span>
-                        Bundle Offer ({appliedBundleOffer.offer.code}): 
-                        <span style={{ fontSize: '12px', display: 'block', color: '#666' }}>
-                          {(() => {
-                            const bundleQty = (appliedBundleOffer.bundleProducts || []).reduce((sum, p) => sum + p.quantity, 0);
-                            const originalQty = (appliedBundleOffer.originalPriceProducts || []).reduce((sum, p) => sum + p.quantity, 0);
-                            const numberOfBundles = appliedBundleOffer.numberOfBundles || 1;
-                            if (originalQty > 0) {
+                  {appliedBundleOffer && bundlePriceDisplay > 0 && (() => {
+                    // Double-check that country-specific pricing exists
+                    const countryBundlePricing = getBundlePriceForCountry(appliedBundleOffer.offer);
+                    if (countryBundlePricing === null) {
+                      return null; // Don't show if no country-specific pricing
+                    }
+                    return (
+                      <div className="summary-bundle-price">
+                        <span>
+                          Bundle Offer ({appliedBundleOffer.offer.code}): 
+                          <span style={{ fontSize: '12px', display: 'block', color: '#666' }}>
+                            {(() => {
+                              const bundleQty = (appliedBundleOffer.bundleProducts || []).reduce((sum, p) => sum + p.quantity, 0);
+                              const originalQty = (appliedBundleOffer.originalPriceProducts || []).reduce((sum, p) => sum + p.quantity, 0);
+                              const numberOfBundles = appliedBundleOffer.numberOfBundles || 1;
+                              if (originalQty > 0) {
+                                return `${numberOfBundles} bundle(s) - ${bundleQty} product(s) at bundle price`;
+                              }
                               return `${numberOfBundles} bundle(s) - ${bundleQty} product(s) at bundle price`;
-                            }
-                            return `${numberOfBundles} bundle(s) - ${bundleQty} product(s) at bundle price`;
-                          })()}
+                            })()}
+                          </span>
                         </span>
-                      </span>
-                      <span>₹{bundlePriceDisplay.toFixed(2)}</span>
-                    </div>
-                  )}
+                        <span>{formatPrice(bundlePriceDisplay, countryBundlePricing.currency || getUserCurrency())}</span>
+                      </div>
+                    );
+                  })()}
                   
                   {appliedBundleOffer && originalPriceProductsTotal > 0 && (
                     <div className="summary-original-price-products">
@@ -1237,7 +1555,7 @@ const Checkout = () => {
                           })()}
                         </span>
                       </span>
-                      <span>₹{originalPriceProductsTotal.toFixed(2)}</span>
+                      <span>{formatPrice(originalPriceProductsTotal)}</span>
                     </div>
                   )}
                   
@@ -1249,14 +1567,14 @@ const Checkout = () => {
                           Products not in offer
                         </span>
                       </span>
-                      <span>₹{nonMatchingProductsTotal.toFixed(2)}</span>
+                      <span>{formatPrice(nonMatchingProductsTotal)}</span>
                     </div>
                   )}
                   
                   {!appliedBundleOffer && (
                     <div className="summary-subtotal">
                       <span>Subtotal:</span>
-                      <span>₹{(cart.total || 0).toFixed(2)}</span>
+                      <span>{formatPrice(calculateSubtotal())}</span>
                     </div>
                   )}
                   
@@ -1266,36 +1584,22 @@ const Checkout = () => {
                         Discount ({appliedCoupon.code}): 
                         {appliedCoupon.discountType === 'percentage' 
                           ? ` -${appliedCoupon.discount}%` 
-                          : ` -₹${appliedCoupon.discount}`}
+                          : ` -${formatPrice(appliedCoupon.discount)}`}
                       </span>
-                      <span>-₹{couponDiscountDisplay.toFixed(2)}</span>
+                      <span>-{formatPrice(couponDiscountDisplay)}</span>
                     </div>
                   )}
                   
                   {paymentMethod === 'cod' && codCharges > 0 && (
                     <div className="summary-cod-charges">
                       <span>COD Charges:</span>
-                      <span>₹{codCharges.toFixed(2)}</span>
+                      <span>{formatPrice(codCharges)}</span>
                     </div>
                   )}
                   
                   <div className="summary-place-order-price">
                     <span>Order Total:</span>
-                    <span>₹{(() => {
-                      // Use the same calculation as Place Order button
-                      const finalTotal = calculateCartTotal();
-                      
-                      // Debug: Verify the calculation
-                      console.log('=== Order Summary Total ===');
-                      console.log('Bundle Price Display:', bundlePriceDisplay);
-                      console.log('Original Price Products:', originalPriceProductsTotal);
-                      console.log('Non-Matching Products:', nonMatchingProductsTotal);
-                      console.log('Subtotal (from calculateSubtotal):', calculateSubtotal());
-                      console.log('Final Total (from calculateCartTotal):', finalTotal);
-                      console.log('===========================');
-                      
-                      return finalTotal.toFixed(2);
-                    })()}</span>
+                    <span>{formatPrice(calculateCartTotal())}</span>
                   </div>
                 </>
               );

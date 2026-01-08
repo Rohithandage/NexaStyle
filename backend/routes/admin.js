@@ -486,7 +486,7 @@ router.get('/carousel-items/all', async (req, res) => {
 // Create carousel item
 router.post('/carousel-items', async (req, res) => {
   try {
-    const { imageUrl, name, buttonText, productIds, order } = req.body;
+    const { imageUrl, name, buttonText, productIds, order, countries } = req.body;
     
     if (!imageUrl) {
       return res.status(400).json({ message: 'Image URL is required' });
@@ -498,6 +498,7 @@ router.post('/carousel-items', async (req, res) => {
       buttonText: buttonText || 'Shop Now',
       productIds: productIds || [],
       order: order || 0,
+      countries: Array.isArray(countries) ? countries.filter(Boolean) : [],
       isActive: true
     });
     
@@ -513,7 +514,7 @@ router.post('/carousel-items', async (req, res) => {
 // Update carousel item
 router.put('/carousel-items/:id', async (req, res) => {
   try {
-    const { imageUrl, name, buttonText, productIds, order, isActive } = req.body;
+    const { imageUrl, name, buttonText, productIds, order, isActive, countries } = req.body;
     
     const updateData = { updatedAt: new Date() };
     if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
@@ -522,6 +523,9 @@ router.put('/carousel-items/:id', async (req, res) => {
     if (productIds !== undefined) updateData.productIds = productIds;
     if (order !== undefined) updateData.order = order;
     if (isActive !== undefined) updateData.isActive = isActive;
+    if (countries !== undefined) {
+      updateData.countries = Array.isArray(countries) ? countries.filter(Boolean) : [];
+    }
     
     const carouselItem = await CarouselItem.findByIdAndUpdate(
       req.params.id,
@@ -714,7 +718,10 @@ router.post('/offers', async (req, res) => {
       bundleDisplayText,
       // Carousel offer fields
       carouselId,
-      carouselDisplayText
+      carouselDisplayText,
+      // Country-specific pricing
+      pricingByCountry,
+      discountByCountry
     } = req.body;
     
     if (!code) {
@@ -789,6 +796,22 @@ router.post('/offers', async (req, res) => {
     if (offerTypeValue === 'coupon') {
       offerData.discount = discount;
       offerData.discountType = discountType || 'percentage';
+      offerData.couponDisplayText = couponDisplayText || '';
+      // Add country-specific discount if provided
+      if (discountByCountry && Array.isArray(discountByCountry) && discountByCountry.length > 0) {
+        // Filter out empty entries
+        const validDiscountByCountry = discountByCountry.filter(d => 
+          d.country && d.currency && d.discount !== undefined && d.discount !== null && d.discount !== ''
+        );
+        if (validDiscountByCountry.length > 0) {
+          offerData.discountByCountry = validDiscountByCountry.map(d => ({
+            country: d.country,
+            currency: d.currency,
+            discount: parseFloat(d.discount),
+            discountType: d.discountType || 'percentage'
+          }));
+        }
+      }
     } else if (offerTypeValue === 'bundle') {
       offerData.category = category;
       offerData.subcategories = subcategories || [];
@@ -796,12 +819,40 @@ router.post('/offers', async (req, res) => {
       offerData.bundlePrice = parseFloat(bundlePrice);
       offerData.bundleQuantity = parseInt(bundleQuantity);
       offerData.bundleDisplayText = bundleDisplayText || '';
+      // Add country-specific pricing if provided
+      if (pricingByCountry && Array.isArray(pricingByCountry) && pricingByCountry.length > 0) {
+        // Filter out empty entries
+        const validPricingByCountry = pricingByCountry.filter(p => 
+          p.country && p.currency && p.bundlePrice !== undefined && p.bundlePrice !== null && p.bundlePrice !== ''
+        );
+        if (validPricingByCountry.length > 0) {
+          offerData.pricingByCountry = validPricingByCountry.map(p => ({
+            country: p.country,
+            currency: p.currency,
+            bundlePrice: parseFloat(p.bundlePrice)
+          }));
+        }
+      }
     } else if (offerTypeValue === 'carousel') {
       offerData.carouselId = carouselId;
       offerData.products = products;
       offerData.bundlePrice = parseFloat(bundlePrice);
       offerData.bundleQuantity = parseInt(bundleQuantity);
       offerData.carouselDisplayText = carouselDisplayText || '';
+      // Add country-specific pricing if provided
+      if (pricingByCountry && Array.isArray(pricingByCountry) && pricingByCountry.length > 0) {
+        // Filter out empty entries
+        const validPricingByCountry = pricingByCountry.filter(p => 
+          p.country && p.currency && p.bundlePrice !== undefined && p.bundlePrice !== null && p.bundlePrice !== ''
+        );
+        if (validPricingByCountry.length > 0) {
+          offerData.pricingByCountry = validPricingByCountry.map(p => ({
+            country: p.country,
+            currency: p.currency,
+            bundlePrice: parseFloat(p.bundlePrice)
+          }));
+        }
+      }
     }
     
     const offer = new Offer(offerData);
@@ -849,7 +900,10 @@ router.put('/offers/:id', async (req, res) => {
       bundleDisplayText,
       // Carousel offer fields
       carouselId,
-      carouselDisplayText
+      carouselDisplayText,
+      // Country-specific pricing
+      pricingByCountry,
+      discountByCountry
     } = req.body;
     
     const updateData = { updatedAt: new Date() };
@@ -873,6 +927,33 @@ router.put('/offers/:id', async (req, res) => {
     if (discountType) updateData.discountType = discountType;
     if (couponDisplayText !== undefined) {
       updateData.couponDisplayText = couponDisplayText.trim();
+    }
+    
+    // Handle country-specific discount for coupons
+    if (discountByCountry !== undefined) {
+      if (Array.isArray(discountByCountry) && discountByCountry.length > 0) {
+        // Filter out empty entries and validate
+        const validDiscountByCountry = discountByCountry.filter(d => {
+          if (!d || !d.country || !d.currency) return false;
+          const discount = parseFloat(d.discount);
+          if (isNaN(discount) || discount < 0) return false;
+          if (d.discountType === 'percentage' && discount > 100) return false;
+          return true;
+        });
+        if (validDiscountByCountry.length > 0) {
+          updateData.discountByCountry = validDiscountByCountry.map(d => ({
+            country: d.country.trim(),
+            currency: d.currency.trim(),
+            discount: parseFloat(d.discount),
+            discountType: d.discountType || 'percentage'
+          }));
+        } else {
+          updateData.discountByCountry = [];
+        }
+      } else {
+        // If empty array, clear the field
+        updateData.discountByCountry = [];
+      }
     }
     
     // Handle bundle fields
@@ -903,6 +984,30 @@ router.put('/offers/:id', async (req, res) => {
       updateData.carouselDisplayText = carouselDisplayText.trim();
     }
     
+    // Handle country-specific pricing for bundle/carousel offers
+    if (pricingByCountry !== undefined) {
+      if (Array.isArray(pricingByCountry) && pricingByCountry.length > 0) {
+        // Filter out empty entries and validate
+        const validPricingByCountry = pricingByCountry.filter(p => {
+          if (!p || !p.country || !p.currency) return false;
+          const price = parseFloat(p.bundlePrice);
+          return !isNaN(price) && price >= 0;
+        });
+        if (validPricingByCountry.length > 0) {
+          updateData.pricingByCountry = validPricingByCountry.map(p => ({
+            country: p.country.trim(),
+            currency: p.currency.trim(),
+            bundlePrice: parseFloat(p.bundlePrice)
+          }));
+        } else {
+          updateData.pricingByCountry = [];
+        }
+      } else {
+        // If empty array, clear the field
+        updateData.pricingByCountry = [];
+      }
+    }
+    
     const offer = await Offer.findByIdAndUpdate(req.params.id, updateData, { new: true });
     
     if (!offer) {
@@ -919,8 +1024,12 @@ router.put('/offers/:id', async (req, res) => {
     
     res.json(offer);
   } catch (error) {
+    console.error('Error updating offer:', error);
     if (error.code === 11000) {
       return res.status(400).json({ message: 'Offer code already exists' });
+    }
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ message: 'Validation error', error: error.message });
     }
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -935,6 +1044,129 @@ router.delete('/offers/:id', async (req, res) => {
     }
     res.json({ message: 'Offer deleted successfully' });
   } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Country Currency Management Routes
+
+// Get all country currencies
+router.get('/country-currencies', async (req, res) => {
+  try {
+    const CountryCurrency = require('../models/CountryCurrency');
+    const countryCurrencies = await CountryCurrency.find().sort({ order: 1, country: 1 });
+    res.json(countryCurrencies);
+  } catch (error) {
+    console.error('Error fetching country currencies:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Create country currency (admin only)
+router.post('/country-currencies', auth, admin, async (req, res) => {
+  try {
+    const CountryCurrency = require('../models/CountryCurrency');
+    const { country, countryCode, currency, currencySymbol, isActive, order } = req.body;
+    
+    if (!country || !countryCode || !currency || !currencySymbol) {
+      return res.status(400).json({ message: 'Country, Country Code, Currency, and Currency Symbol are required' });
+    }
+    
+    // Check if country or countryCode already exists
+    const existing = await CountryCurrency.findOne({
+      $or: [
+        { country: country.trim() },
+        { countryCode: countryCode.trim().toUpperCase() }
+      ]
+    });
+    
+    if (existing) {
+      return res.status(400).json({ message: 'Country or Country Code already exists' });
+    }
+    
+    const countryCurrency = new CountryCurrency({
+      country: country.trim(),
+      countryCode: countryCode.trim().toUpperCase(),
+      currency: currency.trim().toUpperCase(),
+      currencySymbol: currencySymbol.trim(),
+      isActive: isActive !== undefined ? isActive : true,
+      order: order || 0
+    });
+    
+    await countryCurrency.save();
+    res.status(201).json(countryCurrency);
+  } catch (error) {
+    console.error('Error creating country currency:', error);
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'Country or Country Code already exists' });
+    }
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Update country currency (admin only)
+router.put('/country-currencies/:id', auth, admin, async (req, res) => {
+  try {
+    const CountryCurrency = require('../models/CountryCurrency');
+    const { country, countryCode, currency, currencySymbol, isActive, order } = req.body;
+    
+    const updateData = { updatedAt: new Date() };
+    
+    if (country !== undefined) updateData.country = country.trim();
+    if (countryCode !== undefined) updateData.countryCode = countryCode.trim().toUpperCase();
+    if (currency !== undefined) updateData.currency = currency.trim().toUpperCase();
+    if (currencySymbol !== undefined) updateData.currencySymbol = currencySymbol.trim();
+    if (isActive !== undefined) updateData.isActive = isActive;
+    if (order !== undefined) updateData.order = order;
+    
+    // Check if country or countryCode already exists (excluding current record)
+    if (country || countryCode) {
+      const existing = await CountryCurrency.findOne({
+        _id: { $ne: req.params.id },
+        $or: [
+          country ? { country: country.trim() } : {},
+          countryCode ? { countryCode: countryCode.trim().toUpperCase() } : {}
+        ]
+      });
+      
+      if (existing) {
+        return res.status(400).json({ message: 'Country or Country Code already exists' });
+      }
+    }
+    
+    const countryCurrency = await CountryCurrency.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true }
+    );
+    
+    if (!countryCurrency) {
+      return res.status(404).json({ message: 'Country Currency not found' });
+    }
+    
+    res.json(countryCurrency);
+  } catch (error) {
+    console.error('Error updating country currency:', error);
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'Country or Country Code already exists' });
+    }
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Delete country currency (admin only)
+router.delete('/country-currencies/:id', auth, admin, async (req, res) => {
+  try {
+    const CountryCurrency = require('../models/CountryCurrency');
+    const countryCurrency = await CountryCurrency.findByIdAndDelete(req.params.id);
+    
+    if (!countryCurrency) {
+      return res.status(404).json({ message: 'Country Currency not found' });
+    }
+    
+    res.json({ message: 'Country Currency deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting country currency:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

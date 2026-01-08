@@ -22,6 +22,12 @@ const carouselItemSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  // Optional list of country codes (e.g., 'IN', 'US', 'CN') where this carousel item should be shown.
+  // If empty or not set, the item will be shown for all countries.
+  countries: [{
+    type: String,
+    trim: true
+  }],
   isActive: {
     type: Boolean,
     default: true

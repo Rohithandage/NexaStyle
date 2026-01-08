@@ -5,11 +5,34 @@ const Cart = require('../models/Cart');
 const Settings = require('../models/Settings');
 const { auth } = require('../middleware/auth');
 const Razorpay = require('razorpay');
+const paypal = require('@paypal/checkout-server-sdk');
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || 'your_key_id',
   key_secret: process.env.RAZORPAY_KEY_SECRET || 'your_key_secret'
 });
+
+// PayPal Client Configuration
+function paypalClient() {
+  // Validate environment variables
+  if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) {
+    throw new Error('PayPal credentials are missing. Please set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in your .env file');
+  }
+
+  // Use SandboxEnvironment for development/testing
+  const environment = new paypal.core.SandboxEnvironment(
+    process.env.PAYPAL_CLIENT_ID,
+    process.env.PAYPAL_CLIENT_SECRET
+  );
+  
+  // Use LiveEnvironment for production (uncomment when ready)
+  // const environment = new paypal.core.LiveEnvironment(
+  //   process.env.PAYPAL_CLIENT_ID,
+  //   process.env.PAYPAL_CLIENT_SECRET
+  // );
+  
+  return new paypal.core.PayPalHttpClient(environment);
+}
 
 // Create order
 router.post('/create', auth, async (req, res) => {
@@ -24,11 +47,11 @@ router.post('/create', auth, async (req, res) => {
     const orderItems = cart.items.map(item => ({
       product: item.product._id,
       name: item.product.name,
-      quantity: item.quantity,
+      quantity: parseInt(item.quantity) || 1,
       size: item.size,
       color: item.color,
       selectedImage: item.selectedImage,
-      price: item.price
+      price: parseFloat(item.price) || 0
     }));
 
     // Calculate total amount - use adjusted total if bundle offer is applied
@@ -53,8 +76,20 @@ router.post('/create', auth, async (req, res) => {
       }
     }
     
-    // Add COD charges if applicable
+    // Validate COD is only for India
     if (paymentMethod === 'cod') {
+      const orderCountry = shippingAddress?.country || '';
+      const isIndia = orderCountry.toLowerCase().includes('india') || 
+                      orderCountry.toLowerCase() === 'in' ||
+                      orderCountry === '';
+      
+      if (!isIndia) {
+        return res.status(400).json({ 
+          message: 'Cash on Delivery (COD) is only available for India. Please select a different payment method.' 
+        });
+      }
+      
+      // Add COD charges if applicable
       const setting = await Settings.findOne({ key: 'cod_charges' });
       const codCharges = setting ? parseFloat(setting.value) || 0 : 0;
       totalAmount = totalAmount + codCharges;
@@ -82,7 +117,7 @@ router.post('/create', auth, async (req, res) => {
 
     await order.save();
 
-    // Create Razorpay order only for card/upi payments
+    // Create Razorpay order only for card/upi payments (India)
     if (paymentMethod === 'card' || paymentMethod === 'upi') {
       const razorpayOrder = await razorpay.orders.create({
         amount: Math.round(totalAmount * 100), // Amount in paise
@@ -98,6 +133,158 @@ router.post('/create', auth, async (req, res) => {
         razorpayOrderId: razorpayOrder.id,
         razorpayKeyId: process.env.RAZORPAY_KEY_ID
       });
+    }
+
+    // For PayPal payments (US/UK/Canada/Europe)
+    if (paymentMethod === 'paypal') {
+      // Determine currency based on country
+      const getCurrencyForCountry = (country) => {
+        if (!country) return 'USD';
+        const countryLower = country.toLowerCase();
+        if (countryLower === 'usa' || countryLower === 'united states' || countryLower === 'us') return 'USD';
+        if (countryLower === 'uk' || countryLower === 'united kingdom') return 'GBP';
+        if (countryLower === 'canada') return 'CAD';
+        if (countryLower === 'europe' || countryLower === 'germany' || countryLower === 'france' || 
+            countryLower === 'italy' || countryLower === 'spain') return 'EUR';
+        return 'USD';
+      };
+
+      const currency = getCurrencyForCountry(shippingAddress.country);
+      
+      // Create PayPal Order
+      try {
+        // Validate required fields
+        if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) {
+          throw new Error('PayPal credentials not configured. Please set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in your .env file');
+        }
+
+        console.log('Creating PayPal order with:', {
+          orderId: order._id,
+          currency: currency.toUpperCase(),
+          amount: totalAmount.toFixed(2),
+          clientId: process.env.PAYPAL_CLIENT_ID ? 'Set' : 'Missing'
+        });
+
+        const request = new paypal.orders.OrdersCreateRequest();
+        request.prefer("return=representation");
+        
+        // Ensure amount is valid (must be > 0 and properly formatted)
+        const amountValue = parseFloat(totalAmount.toFixed(2));
+        if (isNaN(amountValue) || amountValue <= 0) {
+          throw new Error('Invalid order amount');
+        }
+
+        const requestBody = {
+          intent: 'CAPTURE',
+          purchase_units: [{
+            reference_id: order._id.toString(),
+            description: `Order #${order._id} - ${orderItems.length} item(s)`,
+            amount: {
+              currency_code: currency.toUpperCase(),
+              value: amountValue.toFixed(2)
+            }
+          }],
+          application_context: {
+            brand_name: 'NexaStyle',
+            landing_page: 'BILLING',
+            user_action: 'PAY_NOW',
+            return_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/orders`,
+            cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/checkout?canceled=true`
+          }
+        };
+        
+        request.requestBody(requestBody);
+
+        let client;
+        try {
+          client = paypalClient();
+        } catch (clientError) {
+          console.error('Error creating PayPal client:', clientError);
+          throw new Error(`Failed to initialize PayPal client: ${clientError.message}`);
+        }
+
+        let response;
+        try {
+          response = await client.execute(request);
+        } catch (executeError) {
+          console.error('PayPal API execution error:', executeError);
+          // Log full error details
+          if (executeError.statusCode) {
+            console.error('PayPal Error Status:', executeError.statusCode);
+          }
+          if (executeError.result) {
+            console.error('PayPal Error Result:', JSON.stringify(executeError.result, null, 2));
+          }
+          if (executeError.message) {
+            console.error('PayPal Error Message:', executeError.message);
+          }
+          throw executeError;
+        }
+
+        if (response.statusCode === 201) {
+          // Store PayPal order ID in database
+          order.paypalOrderId = response.result.id;
+          order.paymentStatus = 'pending';
+          order.orderStatus = 'processing';
+          await order.save();
+
+          // Find approval URL
+          const approvalUrl = response.result.links.find(link => link.rel === 'approve')?.href;
+
+          return res.json({
+            order,
+            paymentMethod: 'paypal',
+            paypalOrderId: response.result.id,
+            approvalUrl: approvalUrl,
+            clientId: process.env.PAYPAL_CLIENT_ID
+          });
+        } else {
+          throw new Error(`PayPal API returned status ${response.statusCode}: ${JSON.stringify(response.result || {})}`);
+        }
+      } catch (paypalError) {
+        console.error('PayPal error details:', {
+          message: paypalError.message,
+          statusCode: paypalError.statusCode,
+          details: paypalError.result || paypalError,
+          stack: paypalError.stack
+        });
+        
+        // Delete the order if PayPal order creation fails
+        await Order.findByIdAndDelete(order._id);
+        
+        // Provide more detailed error message
+        let errorMessage = 'Failed to create PayPal order';
+        if (paypalError.result && paypalError.result.message) {
+          errorMessage = paypalError.result.message;
+        } else if (paypalError.message) {
+          errorMessage = paypalError.message;
+        } else if (typeof paypalError === 'string') {
+          errorMessage = paypalError;
+        }
+        
+        // Extract details from PayPal error
+        let errorDetails = '';
+        if (paypalError.result) {
+          if (paypalError.result.details && Array.isArray(paypalError.result.details)) {
+            errorDetails = paypalError.result.details.map(d => {
+              if (typeof d === 'string') return d;
+              return d.issue || d.description || d.field || JSON.stringify(d);
+            }).join('; ');
+          } else if (paypalError.result.name) {
+            errorDetails = `${paypalError.result.name}: ${paypalError.result.message || ''}`;
+          }
+          // Log full error for debugging
+          console.error('Full PayPal error result:', JSON.stringify(paypalError.result, null, 2));
+        }
+        
+        return res.status(500).json({ 
+          message: errorMessage,
+          error: errorDetails || paypalError.message || JSON.stringify(paypalError.result || paypalError),
+          hint: !process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET 
+            ? 'PayPal credentials are missing. Please set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in your .env file'
+            : 'Please check your PayPal credentials and request format. Check backend console for full error details.'
+        });
+      }
     }
 
     // For COD orders, clear cart and return order
@@ -362,6 +549,191 @@ router.get('/:id', auth, async (req, res) => {
     }
 
     res.json(order);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Capture PayPal payment
+router.post('/capture-paypal/:orderId', auth, async (req, res) => {
+  try {
+    const { paypalOrderId } = req.body;
+    const order = await Order.findById(req.params.orderId);
+    
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    if (order.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    // Check if payment is already completed
+    if (order.paymentStatus === 'completed') {
+      return res.json({ 
+        success: true, 
+        order, 
+        paymentStatus: 'completed',
+        message: 'Payment already completed'
+      });
+    }
+
+    // Use paypalOrderId from request body or from order
+    const orderIdToCapture = paypalOrderId || order.paypalOrderId;
+    
+    if (!orderIdToCapture) {
+      return res.status(400).json({ message: 'PayPal order ID is required' });
+    }
+
+    console.log('Capturing PayPal order:', orderIdToCapture);
+
+    // Capture the PayPal order
+    const request = new paypal.orders.OrdersCaptureRequest(orderIdToCapture);
+    request.requestBody({});
+    
+    let client;
+    try {
+      client = paypalClient();
+    } catch (clientError) {
+      console.error('Error creating PayPal client:', clientError);
+      return res.status(500).json({ 
+        message: 'Failed to initialize PayPal client', 
+        error: clientError.message 
+      });
+    }
+
+    let response;
+    try {
+      response = await client.execute(request);
+    } catch (captureError) {
+      console.error('PayPal capture API error:', {
+        message: captureError.message,
+        statusCode: captureError.statusCode,
+        details: captureError.result || captureError
+      });
+      
+      // If order is already captured, check status
+      if (captureError.statusCode === 422 || captureError.statusCode === 400) {
+        // Try to get order status instead
+        try {
+          const getRequest = new paypal.orders.OrdersGetRequest(orderIdToCapture);
+          const getResponse = await client.execute(getRequest);
+          
+          if (getResponse.statusCode === 200) {
+            const paypalOrder = getResponse.result;
+            if (paypalOrder.status === 'COMPLETED') {
+              order.paymentStatus = 'completed';
+              order.paidAmount = order.totalAmount;
+              order.paymentId = paypalOrder.purchase_units[0]?.payments?.captures?.[0]?.id;
+              order.orderStatus = 'processing';
+              await order.save();
+
+              // Clear cart
+              const cart = await Cart.findOne({ user: req.user._id });
+              if (cart) {
+                cart.items = [];
+                cart.total = 0;
+                await cart.save();
+              }
+
+              return res.json({ 
+                success: true, 
+                order, 
+                paymentStatus: 'completed',
+                message: 'Payment was already completed'
+              });
+            }
+          }
+        } catch (getError) {
+          console.error('Error getting PayPal order status:', getError);
+        }
+      }
+      
+      return res.status(500).json({ 
+        message: 'Failed to capture PayPal payment', 
+        error: captureError.message || JSON.stringify(captureError.result || captureError)
+      });
+    }
+
+    if (response.statusCode === 201) {
+      const capture = response.result;
+      
+      if (capture.status === 'COMPLETED') {
+        order.paymentStatus = 'completed';
+        order.paidAmount = order.totalAmount;
+        order.paymentId = capture.id;
+        order.orderStatus = 'processing';
+        await order.save();
+
+        // Clear cart
+        const cart = await Cart.findOne({ user: req.user._id });
+        if (cart) {
+          cart.items = [];
+          cart.total = 0;
+          await cart.save();
+        }
+
+        return res.json({ 
+          success: true, 
+          order, 
+          paymentStatus: 'completed' 
+        });
+      }
+    }
+
+    res.json({ success: false, message: 'Payment not completed', status: response.result?.status });
+  } catch (error) {
+    console.error('PayPal capture error:', {
+      message: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: error.message 
+    });
+  }
+});
+
+// Verify PayPal payment status
+router.get('/verify-paypal/:orderId', auth, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.orderId);
+    
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    if (order.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    if (order.paypalOrderId) {
+      const request = new paypal.orders.OrdersGetRequest(order.paypalOrderId);
+      const client = paypalClient();
+      const response = await client.execute(request);
+
+      if (response.statusCode === 200) {
+        const paypalOrder = response.result;
+        
+        if (paypalOrder.status === 'COMPLETED') {
+          order.paymentStatus = 'completed';
+          order.paidAmount = order.totalAmount;
+          order.paymentId = paypalOrder.purchase_units[0]?.payments?.captures?.[0]?.id;
+          order.orderStatus = 'processing';
+          await order.save();
+
+          // Clear cart
+          const cart = await Cart.findOne({ user: req.user._id });
+          if (cart) {
+            cart.items = [];
+            cart.total = 0;
+            await cart.save();
+          }
+        }
+      }
+    }
+
+    res.json({ order, paymentStatus: order.paymentStatus });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }

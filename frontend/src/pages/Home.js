@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
 import HeaderCarousel from '../components/HeaderCarousel';
 import { getOptimizedImageUrl } from '../utils/config';
+import { getProductPriceForCountry, formatPrice, getUserCountry } from '../utils/currency';
 import './Home.css';
 
 // Color name to hex mapping
@@ -78,13 +79,19 @@ const Home = () => {
     const handleCouponUpdate = () => {
       checkAppliedCoupon();
     };
+    // Listen for currency/country changes to refetch carousel items with correct filtering
+    const handleCurrencyChange = () => {
+      fetchHeaderImages();
+    };
     window.addEventListener('cartUpdated', handleCartUpdate);
     window.addEventListener('couponApplied', handleCouponUpdate);
     window.addEventListener('storage', handleCouponUpdate);
+    window.addEventListener('currencyChanged', handleCurrencyChange);
     return () => {
       window.removeEventListener('cartUpdated', handleCartUpdate);
       window.removeEventListener('couponApplied', handleCouponUpdate);
       window.removeEventListener('storage', handleCouponUpdate);
+      window.removeEventListener('currencyChanged', handleCurrencyChange);
     };
   }, [isAuthenticated]);
 
@@ -141,9 +148,63 @@ const Home = () => {
         console.log('Found carouselItems:', res.data.carouselItems.length);
         console.log('Raw carouselItems:', res.data.carouselItems);
         
-        // Format carouselItems to ensure productIds are properly formatted
+        const userCountry = getUserCountry();
+        // Also check if user manually selected a country from currency dropdown
+        const selectedCurrency = localStorage.getItem('selectedCurrency');
+        let userCountryCode = userCountry?.code || null;
+        
+        // If user manually selected a currency, try to get country code from currency
+        if (selectedCurrency && !userCountryCode) {
+          // Try to infer country code from selected currency
+          const currencyToCountryCode = {
+            'USD': 'US', 'GBP': 'GB', 'CAD': 'CA', 'EUR': 'EU', 'INR': 'IN', 'CNY': 'CN'
+          };
+          userCountryCode = currencyToCountryCode[selectedCurrency] || null;
+        }
+        
+        // Also check localStorage for manually set country code
+        const storedCountryCode = localStorage.getItem('userCountryCode');
+        if (storedCountryCode) {
+          userCountryCode = storedCountryCode;
+        }
+
+        console.log('=== CAROUSEL FILTERING DEBUG ===');
+        console.log('User country code:', userCountryCode);
+        console.log('Selected currency:', selectedCurrency);
+        console.log('User country object:', userCountry);
+        console.log('Total carousel items received:', res.data.carouselItems.length);
+
+        // Format carouselItems to ensure productIds are properly formatted and filter by country (if set)
         const formattedCarouselItems = res.data.carouselItems
           .filter(item => {
+            console.log(`\nChecking carousel item: "${item.name}"`);
+            console.log('  - Item countries array:', item.countries);
+            console.log('  - Item countries type:', typeof item.countries, 'isArray:', Array.isArray(item.countries));
+            
+            // Country filter: if item.countries is set, ONLY show for matching country
+            // If item.countries is empty, show for all countries (backward compatibility)
+            if (Array.isArray(item.countries) && item.countries.length > 0) {
+              // This item has country restrictions
+              console.log('  - Item HAS country restrictions:', item.countries);
+              if (!userCountryCode) {
+                // User country not detected, don't show country-restricted items
+                console.log('  - ❌ HIDING: User country not detected, but item has country restrictions');
+                return false;
+              }
+              const normalizedCodes = item.countries.map(c => (c || '').toUpperCase().trim()).filter(Boolean);
+              const userCodeUpper = userCountryCode.toUpperCase().trim();
+              console.log('  - Normalized item countries:', normalizedCodes);
+              console.log('  - User country code (normalized):', userCodeUpper);
+              
+              if (!normalizedCodes.includes(userCodeUpper)) {
+                console.log('  - ❌ HIDING: Country mismatch - user is', userCodeUpper, 'but item is for', normalizedCodes);
+                return false;
+              }
+              console.log('  - ✅ SHOWING: Country match!');
+            } else {
+              // No country restrictions, show for all
+              console.log('  - ✅ SHOWING: No country restrictions (shows for all countries)');
+            }
             // Filter out items without imageUrl
             if (!item.imageUrl || !item.imageUrl.trim()) {
               console.warn('Carousel item missing imageUrl:', item);
@@ -164,6 +225,8 @@ const Home = () => {
               imageUrl: item.imageUrl.trim(),
               name: item.name || 'Carousel Item',
               buttonText: item.buttonText || 'Shop Now', // Use item's buttonText or default
+              // Preserve countries selection so HeaderCarousel could use it later if needed
+              countries: Array.isArray(item.countries) ? item.countries : [],
               productIds: item.productIds ? item.productIds.map(p => {
                 // Handle both populated objects and ID strings
                 if (typeof p === 'object' && p._id) {
@@ -388,6 +451,29 @@ const Home = () => {
       });
       console.log('✅ Visitor tracked successfully:', response.data);
       console.log('Country in response:', response.data?.country, 'Code:', response.data?.countryCode);
+      
+      // Store country in localStorage for currency utility
+      // Do NOT override if user has manually selected a country/currency
+      const userCountryManual = localStorage.getItem('userCountryManual') === 'true';
+      if (!userCountryManual && response.data && response.data.country && response.data.country !== 'Unknown' && response.data.country !== 'Local') {
+        localStorage.setItem('userCountry', response.data.country);
+        if (response.data.countryCode) {
+          localStorage.setItem('userCountryCode', response.data.countryCode);
+        }
+      } else if (!userCountryManual && clientCountryCode) {
+        // Fallback: use client-detected country code
+        const countryCodeToName = {
+          'US': 'United States',
+          'GB': 'United Kingdom',
+          'CA': 'Canada',
+          'DE': 'Germany',
+          'FR': 'France',
+          'IN': 'India'
+        };
+        const countryName = countryCodeToName[clientCountryCode] || 'United States';
+        localStorage.setItem('userCountry', countryName);
+        localStorage.setItem('userCountryCode', clientCountryCode || 'US');
+      }
       
       // If backend returned Unknown/Local and we have client country code, log it
       if (response.data && (response.data.country === 'Unknown' || response.data.country === 'Local') && clientCountryCode) {
@@ -680,8 +766,12 @@ const Home = () => {
         ) : (
           <>
               {(showAllTrending ? trendingProducts : trendingProducts.slice(0, 4)).map((product) => {
-              const discountPercent = product.discountPrice 
-                ? Math.round(((product.price - product.discountPrice) / product.price) * 100) 
+              // Get country-specific pricing
+              const countryPricing = getProductPriceForCountry(product);
+              const productPrice = countryPricing.price;
+              const productDiscountPrice = countryPricing.discountPrice;
+              const discountPercent = productDiscountPrice
+                ? Math.round(((productPrice - productDiscountPrice) / productPrice) * 100)
                 : 0;
               const brandName = product.name.split(' ')[0] || product.category;
 
@@ -740,16 +830,16 @@ const Home = () => {
                     <div className="product-info">
                       <h3 className="product-name">{product.name}</h3>
                       <div className="product-price-section">
-                        {product.discountPrice ? (
+                        {productDiscountPrice ? (
                           <>
-                            <span className="current-price">₹{product.discountPrice.toLocaleString('en-IN')}</span>
+                            <span className="current-price">{formatPrice(productDiscountPrice, countryPricing.currency)}</span>
                             <span className="mrp-price">
-                              ₹{product.price.toLocaleString('en-IN')}
+                              {formatPrice(productPrice, countryPricing.currency)}
                             </span>
                             <span className="discount-percent">({discountPercent}% off)</span>
                           </>
                         ) : (
-                          <span className="current-price">₹{product.price.toLocaleString('en-IN')}</span>
+                          <span className="current-price">{formatPrice(productPrice, countryPricing.currency)}</span>
                         )}
                       </div>
                       <div className="free-delivery-text">Free Delivery</div>
@@ -787,8 +877,12 @@ const Home = () => {
         ) : (
           <>
               {(showAllFeatured ? featuredProducts : featuredProducts.slice(0, 4)).map((product) => {
-            const discountPercent = product.discountPrice 
-              ? Math.round(((product.price - product.discountPrice) / product.price) * 100) 
+            // Get country-specific pricing
+            const countryPricing = getProductPriceForCountry(product);
+            const productPrice = countryPricing.price;
+            const productDiscountPrice = countryPricing.discountPrice;
+            const discountPercent = productDiscountPrice 
+              ? Math.round(((productPrice - productDiscountPrice) / productPrice) * 100) 
               : 0;
             const brandName = product.name.split(' ')[0] || product.category;
 
@@ -847,16 +941,16 @@ const Home = () => {
                   <div className="product-info">
                     <h3 className="product-name">{product.name}</h3>
                     <div className="product-price-section">
-                      {product.discountPrice ? (
+                      {productDiscountPrice ? (
                         <>
-                          <span className="current-price">₹{product.discountPrice.toLocaleString('en-IN')}</span>
+                          <span className="current-price">{formatPrice(productDiscountPrice, countryPricing.currency)}</span>
                           <span className="mrp-price">
-                            ₹{product.price.toLocaleString('en-IN')}
+                            {formatPrice(productPrice, countryPricing.currency)}
                           </span>
                           <span className="discount-percent">({discountPercent}% off)</span>
                         </>
                       ) : (
-                        <span className="current-price">₹{product.price.toLocaleString('en-IN')}</span>
+                        <span className="current-price">{formatPrice(productPrice, countryPricing.currency)}</span>
                       )}
                     </div>
                     <div className="free-delivery-text">Free Delivery</div>

@@ -3,6 +3,7 @@ const router = express.Router();
 const Settings = require('../models/Settings');
 const Offer = require('../models/Offer');
 const CarouselItem = require('../models/CarouselItem');
+const CountryCurrency = require('../models/CountryCurrency');
 
 // Get header images (public route) - returns carousel items
 router.get('/header-images', async (req, res) => {
@@ -39,6 +40,7 @@ router.get('/header-images', async (req, res) => {
           }
           return p ? p.toString() : '';
         }).filter(id => id) : [],
+        countries: Array.isArray(item.countries) ? item.countries : [],
         _id: item._id
       }));
       
@@ -54,6 +56,7 @@ router.get('/header-images', async (req, res) => {
           }
           return p ? p.toString() : '';
         }).filter(id => id) : [],
+        countries: Array.isArray(item.countries) ? item.countries : [],
         _id: item._id
       }));
       
@@ -135,6 +138,17 @@ router.get('/offers/checkout', async (req, res) => {
       offerType: 'coupon' // Only coupon offers for checkout (bundle offers are fetched separately)
     }).sort({ createdAt: -1 });
     res.json({ offers });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get active currencies (public route) - returns only active country currencies
+router.get('/currencies', async (req, res) => {
+  try {
+    const currencies = await CountryCurrency.find({ isActive: true })
+      .sort({ order: 1, country: 1 });
+    res.json({ currencies });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }

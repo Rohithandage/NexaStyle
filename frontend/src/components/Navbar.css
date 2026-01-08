@@ -94,7 +94,7 @@ body.has-offer-banner .navbar {
 .navbar-login-link {
   background: #90EE90;
   color: #2d5016;
-  padding: 0.5rem 1rem;
+  padding: 0.65rem 1.4rem; /* slightly bigger by default */
   border-radius: 25px;
   font-weight: 500;
   transition: background 0.3s, color 0.3s;
@@ -232,6 +232,199 @@ body.has-offer-banner .navbar {
   flex-shrink: 0;
 }
 
+/* Currency Selector Styles */
+.currency-menu-wrapper {
+  position: relative;
+}
+
+.currency-selector-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+  min-width: 50px;
+}
+
+.currency-selector-btn:hover {
+  background: #e9ecef;
+  border-color: #007bff;
+  color: #007bff;
+}
+
+.currency-flag-display {
+  font-size: 1.5rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.currency-chevron {
+  font-size: 0.75rem;
+  transition: transform 0.3s ease;
+  margin-left: 0.2rem;
+}
+
+.currency-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+.currency-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  min-width: 160px;
+  max-width: 180px;
+  padding: 0.4rem 0;
+  z-index: 10000;
+  animation: fadeIn 0.2s ease-in;
+  overflow: visible;
+}
+
+.currency-dropdown-header {
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  color: #333;
+  font-size: 0.85rem;
+  border-bottom: 1px solid #e9ecef;
+  margin-bottom: 0.2rem;
+}
+
+.currency-dropdown-divider {
+  height: 1px;
+  background: #e9ecef;
+  margin: 0.2rem 0;
+}
+
+.currency-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: none;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+  font-size: 0.85rem;
+  color: #333;
+  font-family: inherit;
+  gap: 0.35rem;
+}
+
+.currency-option:hover {
+  background-color: #f8f9fa;
+  color: #007bff;
+}
+
+.currency-option.active {
+  background-color: #e7f3ff;
+  color: #007bff;
+  font-weight: 600;
+}
+
+.currency-option-flag {
+  font-size: 1.5rem;
+  line-height: 1;
+  display: block;
+  margin-bottom: 0.15rem;
+}
+
+.currency-option-content {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  justify-content: center;
+  width: 100%;
+}
+
+.currency-option-symbol {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.currency-option-text {
+  font-size: 0.8rem;
+}
+
+/* Floating currency selector on auth pages (login/register) */
+.auth-currency-floating {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 12000;
+}
+
+/* Non-rounded but attractive style for floating currency button (login / signup / guest home) */
+.auth-currency-floating .currency-selector-btn {
+  background: linear-gradient(135deg, #ffffff 0%, #f9fafb 40%, #e0f2fe 100%);
+  color: #111827;
+  border-radius: 8px;            /* subtle corners, not fully rounded */
+  border: 1px solid #93c5fd;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.25);
+  padding: 0.6rem 0.9rem;
+}
+
+.auth-currency-floating .currency-selector-btn:hover {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 40%, #bfdbfe 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.3);
+}
+
+.auth-currency-floating .currency-flag-display {
+  font-size: 1.6rem;
+}
+
+.auth-currency-floating .currency-chevron {
+  color: #1d4ed8;
+}
+
+/* Make dropdown open upward from the floating button */
+.auth-currency-floating .currency-dropdown {
+  bottom: calc(100% + 10px);
+  top: auto;
+  right: 0;
+  left: auto;
+}
+
+@media (max-width: 768px) {
+  .auth-currency-floating {
+    bottom: 16px;
+    right: 16px;
+  }
+  
+  .auth-currency-floating .currency-dropdown {
+    bottom: calc(100% + 8px);
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-currency-floating {
+    bottom: 12px;
+    right: 12px;
+  }
+  
+  .auth-currency-floating .currency-dropdown {
+    bottom: calc(100% + 8px);
+    min-width: 140px;
+    max-width: 160px;
+  }
+}
+
 .navbar-search-mobile {
   display: none;
 }
@@ -328,7 +521,7 @@ body.has-offer-banner .navbar {
 .navbar-button {
   background: #007bff;
   color: white;
-  padding: 0.5rem 1rem;
+  padding: 0.65rem 1.4rem; /* slightly bigger by default */
   border-radius: 25px;
   font-weight: 500;
   transition: background 0.3s;
@@ -478,8 +671,8 @@ body.has-offer-banner .navbar {
   }
 
   .navbar-search-desktop {
-    max-width: 300px;
-    min-width: 180px;
+    max-width: 240px; /* make search bar smaller on tablets */
+    min-width: 160px;
     margin: 0 0.75rem;
   }
 
@@ -502,14 +695,14 @@ body.has-offer-banner .navbar {
   }
 
   .navbar-login-link {
-    padding: 0.45rem 0.9rem;
-    font-size: 0.9rem;
+    padding: 0.6rem 1.2rem;
+    font-size: 1rem;
     white-space: nowrap;
   }
 
   .navbar-button {
-    padding: 0.45rem 0.9rem;
-    font-size: 0.9rem;
+    padding: 0.6rem 1.2rem;
+    font-size: 1rem;
     white-space: nowrap;
   }
 
@@ -532,8 +725,8 @@ body.has-offer-banner .navbar {
   }
 
   .navbar-search-desktop {
-    max-width: 350px;
-    min-width: 220px;
+    max-width: 260px; /* slightly smaller search bar on small desktops */
+    min-width: 180px;
   }
 
   .navbar-search-desktop .navbar-search-input {
@@ -542,13 +735,13 @@ body.has-offer-banner .navbar {
   }
 
   .navbar-login-link {
-    padding: 0.48rem 0.95rem;
-    font-size: 0.95rem;
+    padding: 0.65rem 1.35rem;
+    font-size: 1.05rem;
   }
 
   .navbar-button {
-    padding: 0.48rem 0.95rem;
-    font-size: 0.95rem;
+    padding: 0.65rem 1.35rem;
+    font-size: 1.05rem;
   }
 }
 
@@ -587,7 +780,7 @@ body.has-offer-banner .navbar {
   }
 
   .navbar-search-desktop {
-    margin: 0 1rem;
+    margin: 0 0.75rem; /* give more room to auth buttons on wide screens */
   }
 
   .navbar-icons {
@@ -597,6 +790,16 @@ body.has-offer-banner .navbar {
 
   .navbar-icon {
     font-size: 2rem; /* Bigger profile and cart icons on desktop */
+  }
+
+  .currency-selector-btn {
+    padding: 0.55rem 0.85rem;
+    font-size: 0.95rem;
+    min-width: 50px;
+  }
+
+  .currency-flag-display {
+    font-size: 1.75rem;
   }
 
   .profile-icon-btn {
@@ -748,14 +951,15 @@ body.has-offer-banner .navbar {
     display: flex;
     width: 100%;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.4rem;
     order: 1;
     flex-wrap: nowrap;
+    overflow: visible;
   }
 
   .navbar-mobile-auth-row .navbar-search-mobile {
     flex: 1 1 auto;
-    min-width: 120px;
+    min-width: 80px;
     max-width: none;
     margin: 0;
   }
@@ -779,18 +983,19 @@ body.has-offer-banner .navbar {
   }
 
   .navbar-mobile-auth-row .navbar-login-link {
-    padding: 0.6rem 0.9rem;
-    min-height: 40px;
-    font-size: 0.85rem;
+    padding: 0.65rem 0.9rem;
+    min-height: 44px;
+    font-size: 0.9rem;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    white-space: nowrap;
   }
 
   .navbar-mobile-auth-row .navbar-button {
-    font-size: 0.85rem;
-    padding: 0.6rem 0.9rem;
+    font-size: 0.9rem;
+    padding: 0.65rem 0.9rem;
     white-space: nowrap;
     flex-shrink: 0;
     min-width: fit-content;
@@ -798,6 +1003,26 @@ body.has-offer-banner .navbar {
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+
+  .navbar-mobile-auth-row .currency-menu-wrapper {
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .navbar-mobile-auth-row .currency-selector-btn {
+    padding: 0.5rem 0.7rem;
+    font-size: 0.85rem;
+    min-width: 45px;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Ensure login and sign up stay side by side */
+  .navbar-mobile-auth-row .navbar-login-link + .navbar-button {
+    margin-left: 0;
   }
 
   .navbar-category-wrapper {
@@ -929,6 +1154,51 @@ body.has-offer-banner .navbar {
     justify-content: center;
   }
 
+  .currency-selector-btn {
+    padding: 0.5rem 0.7rem;
+    font-size: 0.85rem;
+    min-width: 45px;
+  }
+
+  .currency-flag-display {
+    font-size: 1.5rem;
+  }
+
+  .currency-dropdown {
+    right: 0;
+    left: auto;
+    min-width: 150px;
+    max-width: 170px;
+    padding: 0.35rem 0;
+  }
+
+  .currency-dropdown-header {
+    padding: 0.45rem 0.65rem;
+    font-size: 0.8rem;
+  }
+
+  .currency-option {
+    padding: 0.45rem 0.65rem;
+    font-size: 0.8rem;
+    gap: 0.3rem;
+  }
+
+  .currency-option-flag {
+    font-size: 1.4rem;
+  }
+
+  .currency-option-content {
+    gap: 0.35rem;
+  }
+
+  .currency-option-symbol {
+    font-size: 0.9rem;
+  }
+
+  .currency-option-text {
+    font-size: 0.75rem;
+  }
+
   .cart-badge {
     width: 24px;
     height: 24px;
@@ -1052,12 +1322,13 @@ body.has-offer-banner .navbar {
   }
 
   .navbar-mobile-auth-row {
-    gap: 0.5rem;
+    gap: 0.4rem;
     flex-wrap: nowrap;
+    overflow: visible;
   }
 
   .navbar-mobile-auth-row .navbar-search-mobile {
-    min-width: 100px;
+    min-width: 80px;
     flex: 1 1 auto;
   }
 
@@ -1079,8 +1350,8 @@ body.has-offer-banner .navbar {
 
   .navbar-mobile-auth-row .navbar-link,
   .navbar-mobile-auth-row .navbar-login-link {
-    font-size: 0.8rem;
-    padding: 0.5rem 0.7rem;
+    font-size: 0.85rem;
+    padding: 0.55rem 0.75rem;
     white-space: nowrap;
     flex-shrink: 0;
     min-height: 36px;
@@ -1090,10 +1361,25 @@ body.has-offer-banner .navbar {
   }
 
   .navbar-mobile-auth-row .navbar-button {
-    font-size: 0.8rem;
-    padding: 0.5rem 0.7rem;
+    font-size: 0.85rem;
+    padding: 0.55rem 0.75rem;
     white-space: nowrap;
     flex-shrink: 0;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .navbar-mobile-auth-row .currency-menu-wrapper {
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .navbar-mobile-auth-row .currency-selector-btn {
+    padding: 0.45rem 0.6rem;
+    font-size: 0.8rem;
+    min-width: 40px;
     min-height: 36px;
     display: flex;
     align-items: center;
@@ -1107,6 +1393,56 @@ body.has-offer-banner .navbar {
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+
+  .currency-selector-btn {
+    padding: 0.45rem 0.6rem;
+    font-size: 0.8rem;
+    gap: 0.3rem;
+    min-width: 40px;
+  }
+
+  .currency-flag-display {
+    font-size: 1.4rem;
+  }
+
+  .currency-chevron {
+    font-size: 0.7rem;
+  }
+
+  .currency-dropdown {
+    right: 0;
+    left: auto;
+    min-width: 140px;
+    max-width: 160px;
+    padding: 0.3rem 0;
+  }
+
+  .currency-dropdown-header {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.75rem;
+  }
+
+  .currency-option {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.75rem;
+    gap: 0.25rem;
+  }
+
+  .currency-option-flag {
+    font-size: 1.3rem;
+  }
+
+  .currency-option-content {
+    gap: 0.3rem;
+  }
+
+  .currency-option-symbol {
+    font-size: 0.85rem;
+  }
+
+  .currency-option-text {
+    font-size: 0.7rem;
   }
 
   .cart-badge {

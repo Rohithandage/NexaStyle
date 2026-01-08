@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
 import { FiTrash2, FiPlus, FiMinus } from 'react-icons/fi';
 import { getOptimizedImageUrl } from '../utils/config';
+import { formatPrice, getUserCurrency, getSizePriceForCountry, getProductPriceForCountry, getBundlePriceForCountry, getUserCountry } from '../utils/currency';
 import './Cart.css';
 import './Checkout.css';
 
@@ -108,12 +109,29 @@ const Cart = () => {
     const handleCouponUpdate = () => {
       fetchOffers();
     };
+    
+    // Listen for currency changes
+    const handleCurrencyChange = () => {
+      // When currency/country changes, just refetch bundle offers
+      fetchBundleOffers();
+    };
+
+    const handleStorageChange = (e) => {
+      if (e.key === 'selectedCurrency' || e.key === 'userCountry') {
+        handleCurrencyChange();
+      } else {
+        handleCouponUpdate();
+      }
+    };
+    
     window.addEventListener('couponApplied', handleCouponUpdate);
-    window.addEventListener('storage', handleCouponUpdate);
+    window.addEventListener('currencyChanged', handleCurrencyChange);
+    window.addEventListener('storage', handleStorageChange);
     
     return () => {
       window.removeEventListener('couponApplied', handleCouponUpdate);
-      window.removeEventListener('storage', handleCouponUpdate);
+      window.removeEventListener('currencyChanged', handleCurrencyChange);
+      window.removeEventListener('storage', handleStorageChange);
     };
   }, [isAuthenticated]);
 
@@ -163,12 +181,27 @@ const Cart = () => {
 
   const fetchBundleOffers = async () => {
     try {
+      const userCountry = getUserCountry();
+      const selectedCurrency = localStorage.getItem('selectedCurrency') || getUserCurrency();
+      console.log('🔍 Fetching bundle offers - Country:', userCountry.country, 'Currency:', selectedCurrency);
       const res = await api.get('/api/cart/bundle-offers', {
+        params: {
+          country: userCountry.country,
+          currency: selectedCurrency
+        },
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
       });
+      // Backend already filters by country and validates country-specific pricing exists
+      // Trust the backend results - if it returns an offer, it means country-specific pricing exists
       const applicableOffers = res.data.applicableOffers || [];
+      console.log('📦 Bundle offers received from backend:', applicableOffers.length, 'for country:', userCountry.country);
+      if (applicableOffers.length > 0) {
+        console.log('📦 Offer codes:', applicableOffers.map(o => o.offer?.code));
+      } else {
+        console.log('⚠️ No bundle offers found for country:', userCountry.country, 'currency:', selectedCurrency);
+      }
       setBundleOffers(applicableOffers);
       
       // Check if currently applied bundle offer is still valid
@@ -176,17 +209,32 @@ const Cart = () => {
         const stillValid = applicableOffers.find(
           offer => offer.offer._id === appliedBundleOffer.offer._id
         );
-        if (!stillValid) {
-          // Offer is no longer valid, clear it
+        // Also verify country-specific pricing exists for current country/currency
+        const countryBundlePricing = getBundlePriceForCountry(appliedBundleOffer.offer);
+        
+        if (!stillValid || countryBundlePricing === null) {
+          // Offer is no longer valid or doesn't have country-specific pricing, clear it
           setAppliedBundleOffer(null);
+          if (countryBundlePricing === null) {
+            console.log('Bundle offer cleared - no country-specific pricing available');
+            toast.info('Bundle offer is not available for your country');
+          }
         } else {
           // Update the applied offer with latest data (important for quantity changes)
           setAppliedBundleOffer(stillValid);
         }
       } else {
         // Auto-apply the first applicable bundle offer if available
+        // Backend already filters to only return offers with country-specific pricing
         if (applicableOffers.length > 0) {
-          setAppliedBundleOffer(applicableOffers[0]);
+          // Double-check frontend validation before applying
+          const firstOffer = applicableOffers[0];
+          const countryBundlePricing = getBundlePriceForCountry(firstOffer.offer);
+          if (countryBundlePricing !== null) {
+            setAppliedBundleOffer(firstOffer);
+          } else {
+            console.log('Skipping auto-apply - no country-specific pricing found');
+          }
         }
       }
     } catch (error) {
@@ -194,12 +242,31 @@ const Cart = () => {
     }
   };
 
+  // Helper function to get recalculated price for a cart item
+  const getItemPrice = (item) => {
+    const product = item.product;
+    if (!product) return item.price;
+    
+    if (item.size) {
+      // Get size-specific pricing
+      const sizePricing = getSizePriceForCountry(product, item.size);
+      return sizePricing.discountPrice || sizePricing.price;
+    } else {
+      // Get product-level pricing
+      const countryPricing = getProductPriceForCountry(product);
+      return countryPricing.discountPrice || countryPricing.price;
+    }
+  };
+
   // Calculate subtotal with bundle pricing
   const calculateSubtotal = () => {
     if (!cart) return 0;
     
-    // Start with cart total (all products at original price)
-    let subtotal = cart.total || 0;
+    // Recalculate total based on current currency
+    let subtotal = 0;
+    cart.items.forEach(item => {
+      subtotal += getItemPrice(item) * item.quantity;
+    });
     
     // Apply bundle pricing if applicable
     if (appliedBundleOffer && cart.items) {
@@ -211,12 +278,23 @@ const Cart = () => {
         return sum + (bundleProduct.price * bundleProduct.quantity);
       }, 0);
       
-      // Get total bundle price to apply
-      const bundlePriceToApply = appliedBundleOffer.totalBundlePrice || appliedBundleOffer.bundlePrice;
+      // Get country-specific bundle price
+      const countryBundlePricing = getBundlePriceForCountry(appliedBundleOffer.offer);
       
-      // Recalculate bundleProductsTotal to ensure it's correct
+      // If country-specific pricing doesn't exist, don't apply bundle offer
+      if (countryBundlePricing === null) {
+        // Recalculate without bundle pricing
+        return cart.items.reduce((sum, item) => {
+          return sum + (getItemPrice(item) * item.quantity);
+        }, 0);
+      }
+      
+      const bundlePricePerBundle = countryBundlePricing.bundlePrice || 0;
       const requiredQuantity = appliedBundleOffer.bundleQuantity || 1;
       const numberOfBundles = appliedBundleOffer.numberOfBundles || 1;
+      const bundlePriceToApply = bundlePricePerBundle * numberOfBundles;
+      
+      // Recalculate bundleProductsTotal to ensure it's correct
       
       let recalculatedBundleProductsTotal = 0;
       let remainingForBundle = numberOfBundles * requiredQuantity;
@@ -226,14 +304,14 @@ const Cart = () => {
         const itemProductId = item.product?._id?.toString() || item.product?.toString();
         if (matchingProductIds.includes(itemProductId) && remainingForBundle > 0) {
           const quantityForBundle = Math.min(item.quantity, remainingForBundle);
-          recalculatedBundleProductsTotal += item.price * quantityForBundle;
+          recalculatedBundleProductsTotal += getItemPrice(item) * quantityForBundle;
           remainingForBundle -= quantityForBundle;
         }
       }
       
       const finalBundleProductsTotal = recalculatedBundleProductsTotal > 0 ? recalculatedBundleProductsTotal : bundleProductsTotal;
       
-      // Calculate subtotal: cart.total - products that get bundle pricing + bundle price
+      // Calculate subtotal: recalculated total - products that get bundle pricing + bundle price
       subtotal = subtotal - finalBundleProductsTotal + bundlePriceToApply;
     }
     
@@ -320,91 +398,100 @@ const Cart = () => {
     <div className="cart-page">
       <div className="cart-container">
         <h1>Shopping Cart</h1>
+        
+        {/* Bundle & Carousel Offers - Compact Cards */}
+        {bundleOffers.length > 0 && (
+          <div className="offers-section-cart">
+            <h2>📦 Bundle & Carousel Offers</h2>
+            <div className="offers-container-cart">
+              {bundleOffers.map((bundleOffer) => {
+                const countryBundlePricing = getBundlePriceForCountry(bundleOffer.offer);
+                const bundlePricePerBundle = countryBundlePricing?.bundlePrice || bundleOffer.bundlePrice || 0;
+                const numberOfBundles = bundleOffer.numberOfBundles || 1;
+                const totalBundlePrice = bundlePricePerBundle * numberOfBundles;
+                const saving = (bundleOffer.originalTotal - totalBundlePrice) || 0;
+
+                const mainText =
+                  bundleOffer.offer.carouselDisplayText ||
+                  bundleOffer.offer.bundleDisplayText ||
+                  `${bundleOffer.bundleQuantity || bundleOffer.offer.bundleQuantity || 'X'} products at ${formatPrice(
+                    bundlePricePerBundle,
+                    countryBundlePricing?.currency || getUserCurrency()
+                  )}`;
+
+                return (
+                  <div
+                    key={bundleOffer.offer._id}
+                    className={`offer-card-cart ${appliedBundleOffer?.offer._id === bundleOffer.offer._id ? 'applied' : ''}`}
+                    title={bundleOffer.offer.description || mainText}
+                  >
+                    <span className="offer-tag-cart">
+                      {bundleOffer.offer.offerType === 'carousel' ? 'Carousel' : 'Bundle'}
+                    </span>
+                    <span className="offer-code-cart">{bundleOffer.offer.code}</span>
+                    <span className="offer-main-text-cart">{mainText}</span>
+                    {saving > 0 && (
+                      <span className="offer-saving-cart">
+                        Save {formatPrice(saving, countryBundlePricing?.currency || getUserCurrency())}
+                      </span>
+                    )}
+                    <button
+                      className={`offer-apply-btn-cart ${appliedBundleOffer?.offer._id === bundleOffer.offer._id ? 'applied' : ''}`}
+                      onClick={() => {
+                        if (appliedBundleOffer?.offer._id === bundleOffer.offer._id) {
+                          setAppliedBundleOffer(null);
+                          toast.info('Bundle offer removed');
+                        } else {
+                          setAppliedBundleOffer(bundleOffer);
+                          if (saving > 0) {
+                            toast.success(
+                              `Bundle offer applied! Save ${formatPrice(saving, countryBundlePricing?.currency || getUserCurrency())}`
+                            );
+                          } else {
+                            toast.success('Bundle offer applied!');
+                          }
+                        }
+                      }}
+                    >
+                      {appliedBundleOffer?.offer._id === bundleOffer.offer._id ? 'Remove' : 'Apply'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="cart-content">
           <div className="cart-items">
-            {cart.items.map((item) => (
-              <div key={item._id} className="cart-item">
-                <div className="cart-item-image">
-                  {(() => {
-                    // Use selectedImage if available (color-specific), otherwise fall back to first product image
-                    const imageToShow = item.selectedImage || (item.product?.images?.[0]);
-                    return imageToShow ? (
-                      <img 
-                        src={getOptimizedImageUrl(imageToShow, 300)} 
-                        alt={item.product?.name}
-                        loading="lazy"
-                        decoding="async"
-                        width="300"
-                        height="300"
-                        style={{
-                          width: "100%",
-                          aspectRatio: "1 / 1",
-                          objectFit: "cover",
-                          backgroundColor: "#f2f2f2"
-                        }}
-                        onError={(e) => {
-                          e.target.onerror = null;
-                          e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
-                        }}
-                      />
-                    ) : (
-                      <div className="placeholder-image">No Image</div>
-                    );
-                  })()}
-                </div>
-                <div className="cart-item-info">
-                  <h3>{item.product?.name}</h3>
-                  {item.size && <p>Size: {item.size}</p>}
-                  {item.color && (
-                    <p className="cart-item-color">
-                      Color: {item.color}
-                      <span 
-                        className="cart-color-swatch"
-                        style={{ 
-                          backgroundColor: getColorValue(item.color),
-                          borderColor: '#ddd'
-                        }}
-                        title={item.color}
-                      ></span>
-                    </p>
-                  )}
-                  <p className="cart-item-price">₹{item.price}</p>
-                </div>
-                <div className="cart-item-quantity">
-                  <button onClick={() => updateQuantity(item._id, item.quantity - 1)}>
-                    <FiMinus />
-                  </button>
-                  <span>{item.quantity}</span>
-                  <button onClick={() => updateQuantity(item._id, item.quantity + 1)}>
-                    <FiPlus />
-                  </button>
-                </div>
-                <div className="cart-item-total">
-                  ₹{item.price * item.quantity}
-                </div>
-                <button
-                  onClick={() => removeItem(item._id)}
-                  className="remove-item-btn"
-                >
-                  <FiTrash2 />
-                </button>
-              </div>
-            ))}
-          </div>
-
-          <div className="order-summary">
-            <h2>Order Summary</h2>
-            <div className="summary-items">
-              {cart?.items.map((item) => (
-                <div key={item._id} className="summary-item">
-                  <div className="summary-item-image">
+            {cart.items.map((item) => {
+              // Recalculate price based on selected currency and size
+              const itemPrice = getItemPrice(item);
+              const product = item.product;
+              let itemCurrency = getUserCurrency();
+              
+              if (product) {
+                if (item.size) {
+                  // Get size-specific pricing for currency
+                  const sizePricing = getSizePriceForCountry(product, item.size);
+                  itemCurrency = sizePricing.currency;
+                } else {
+                  // Get product-level pricing for currency
+                  const countryPricing = getProductPriceForCountry(product);
+                  itemCurrency = countryPricing.currency;
+                }
+              }
+              
+              return (
+                <div key={item._id} className="cart-item">
+                  <div className="cart-item-image">
                     {(() => {
                       // Use selectedImage if available (color-specific), otherwise fall back to first product image
                       const imageToShow = item.selectedImage || (item.product?.images?.[0]);
                       return imageToShow ? (
                         <img 
                           src={getOptimizedImageUrl(imageToShow, 300)} 
-                          alt={item.product?.name || 'Product'}
+                          alt={item.product?.name}
                           loading="lazy"
                           decoding="async"
                           width="300"
@@ -425,35 +512,14 @@ const Cart = () => {
                       );
                     })()}
                   </div>
-                  <div className="summary-item-details">
-                    <h4>{item.product?.name}</h4>
-                    <div className="summary-item-quantity-controls">
-                      <p>Price: ₹{item.price}</p>
-                      <div className="quantity-controls">
-                        <button
-                          className="quantity-btn"
-                          onClick={() => updateQuantity(item._id, item.quantity - 1)}
-                          disabled={item.quantity <= 1}
-                          aria-label="Decrease quantity"
-                        >
-                          <FiMinus />
-                        </button>
-                        <span className="quantity-value">{item.quantity}</span>
-                        <button
-                          className="quantity-btn"
-                          onClick={() => updateQuantity(item._id, item.quantity + 1)}
-                          aria-label="Increase quantity"
-                        >
-                          <FiPlus />
-                        </button>
-                      </div>
-                    </div>
+                  <div className="cart-item-info">
+                    <h3>{item.product?.name}</h3>
                     {item.size && <p>Size: {item.size}</p>}
                     {item.color && (
-                      <p className="summary-item-color">
+                      <p className="cart-item-color">
                         Color: {item.color}
                         <span 
-                          className="summary-color-swatch"
+                          className="cart-color-swatch"
                           style={{ 
                             backgroundColor: getColorValue(item.color),
                             borderColor: '#ddd'
@@ -462,15 +528,149 @@ const Cart = () => {
                         ></span>
                       </p>
                     )}
+                    <p className="cart-item-price">{formatPrice(itemPrice, itemCurrency)}</p>
                   </div>
-                  <span className="summary-item-price">₹{item.price * item.quantity}</span>
+                  <div className="cart-item-quantity">
+                    <button onClick={() => updateQuantity(item._id, item.quantity - 1)}>
+                      <FiMinus />
+                    </button>
+                    <span>{item.quantity}</span>
+                    <button onClick={() => updateQuantity(item._id, item.quantity + 1)}>
+                      <FiPlus />
+                    </button>
+                  </div>
+                  <div className="cart-item-total">
+                    {formatPrice(itemPrice * item.quantity, itemCurrency)}
+                  </div>
+                  <button
+                    onClick={() => removeItem(item._id)}
+                    className="remove-item-btn"
+                  >
+                    <FiTrash2 />
+                  </button>
                 </div>
-              ))}
+              );
+            })}
+          </div>
+
+          <div className="order-summary">
+            <h2>Order Summary</h2>
+            <div className="summary-items">
+              {cart?.items.map((item) => {
+                // Recalculate price based on selected currency and size
+                const itemPrice = getItemPrice(item);
+                const product = item.product;
+                let itemCurrency = getUserCurrency();
+                
+                if (product) {
+                  if (item.size) {
+                    // Get size-specific pricing for currency
+                    const sizePricing = getSizePriceForCountry(product, item.size);
+                    itemCurrency = sizePricing.currency;
+                  } else {
+                    // Get product-level pricing for currency
+                    const countryPricing = getProductPriceForCountry(product);
+                    itemCurrency = countryPricing.currency;
+                  }
+                }
+                
+                return (
+                  <div key={item._id} className="summary-item">
+                    <div className="summary-item-image">
+                      {(() => {
+                        // Use selectedImage if available (color-specific), otherwise fall back to first product image
+                        const imageToShow = item.selectedImage || (item.product?.images?.[0]);
+                        return imageToShow ? (
+                          <img 
+                            src={getOptimizedImageUrl(imageToShow, 300)} 
+                            alt={item.product?.name || 'Product'}
+                            loading="lazy"
+                            decoding="async"
+                            width="300"
+                            height="300"
+                            style={{
+                              width: "100%",
+                              aspectRatio: "1 / 1",
+                              objectFit: "cover",
+                              backgroundColor: "#f2f2f2"
+                            }}
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                            }}
+                          />
+                        ) : (
+                          <div className="placeholder-image">No Image</div>
+                        );
+                      })()}
+                    </div>
+                    <div className="summary-item-details">
+                      <h4>{item.product?.name}</h4>
+                      <div className="summary-item-quantity-controls">
+                        <p>Price: {formatPrice(itemPrice, itemCurrency)}</p>
+                        <div className="quantity-controls">
+                          <button
+                            className="quantity-btn"
+                            onClick={() => updateQuantity(item._id, item.quantity - 1)}
+                            disabled={item.quantity <= 1}
+                            aria-label="Decrease quantity"
+                          >
+                            <FiMinus />
+                          </button>
+                          <span className="quantity-value">{item.quantity}</span>
+                          <button
+                            className="quantity-btn"
+                            onClick={() => updateQuantity(item._id, item.quantity + 1)}
+                            aria-label="Increase quantity"
+                          >
+                            <FiPlus />
+                          </button>
+                        </div>
+                      </div>
+                      {item.size && <p>Size: {item.size}</p>}
+                      {item.color && (
+                        <p className="summary-item-color">
+                          Color: {item.color}
+                          <span 
+                            className="summary-color-swatch"
+                            style={{ 
+                              backgroundColor: getColorValue(item.color),
+                              borderColor: '#ddd'
+                            }}
+                            title={item.color}
+                          ></span>
+                        </p>
+                      )}
+                    </div>
+                    <span className="summary-item-price">{formatPrice(itemPrice * item.quantity, itemCurrency)}</span>
+                  </div>
+                );
+              })}
             </div>
             
             {/* Order Summary Calculations */}
             {(() => {
               if (!cart) return null;
+              
+              // Get currency from first cart item
+              const getCurrency = () => {
+                if (cart?.items?.length > 0) {
+                  const firstItem = cart.items[0];
+                  if (firstItem.product) {
+                    if (firstItem.size) {
+                      const sizePricing = getSizePriceForCountry(firstItem.product, firstItem.size);
+                      return sizePricing.currency;
+                    } else {
+                      const countryPricing = getProductPriceForCountry(firstItem.product);
+                      return countryPricing.currency;
+                    }
+                  }
+                }
+                return getUserCurrency();
+              };
+              const currency = getCurrency();
+              // This will be overridden for bundle prices when we know the exact bundle currency
+              let bundleCurrency = currency;
               
               // Calculate bundle price and original price products separately
               let bundlePriceDisplay = 0;
@@ -478,15 +678,40 @@ const Cart = () => {
               let nonMatchingProductsTotal = 0;
               
               if (appliedBundleOffer && cart.items) {
-                const bundlePriceToApply = appliedBundleOffer.totalBundlePrice || appliedBundleOffer.bundlePrice;
-                bundlePriceDisplay = bundlePriceToApply || 0;
+                // Get country-specific bundle price (includes correct currency for this bundle)
+                const countryBundlePricing = getBundlePriceForCountry(appliedBundleOffer.offer);
+                
+                // If country-specific pricing doesn't exist, don't show bundle offer
+                if (countryBundlePricing === null) {
+                  bundlePriceDisplay = 0;
+                } else {
+                  const bundlePricePerBundle = countryBundlePricing.bundlePrice || 0;
+                  const numberOfBundles = appliedBundleOffer.numberOfBundles || 1;
+                  const bundlePriceToApply = bundlePricePerBundle * numberOfBundles;
+                  bundlePriceDisplay = bundlePriceToApply || 0;
+                  // Use the bundle's own currency for displaying the bundle price
+                  if (countryBundlePricing.currency) {
+                    bundleCurrency = countryBundlePricing.currency;
+                  }
+                }
                 
                 // Get matching product IDs
                 const matchingProductIds = (appliedBundleOffer.matchingProducts || []).map(m => m.productId?.toString());
                 
                 // Calculate original price products total (products not in bundle but matching the offer)
+                // Recalculate using country-specific pricing
                 const originalPriceProducts = appliedBundleOffer.originalPriceProducts || [];
                 originalPriceProductsTotal = originalPriceProducts.reduce((sum, origProduct) => {
+                  // Find the corresponding cart item to get country-specific price
+                  const cartItem = cart.items.find(item => {
+                    const itemProductId = item.product?._id?.toString() || item.product?.toString();
+                    return itemProductId === origProduct.productId;
+                  });
+                  if (cartItem) {
+                    // Use getItemPrice to get country-specific price
+                    return sum + (getItemPrice(cartItem) * origProduct.quantity);
+                  }
+                  // Fallback to original price if cart item not found
                   return sum + (origProduct.price * origProduct.quantity);
                 }, 0);
                 
@@ -494,13 +719,15 @@ const Cart = () => {
                 nonMatchingProductsTotal = cart.items.reduce((sum, item) => {
                   const itemProductId = item.product?._id?.toString() || item.product?.toString();
                   if (!matchingProductIds.includes(itemProductId)) {
-                    return sum + (item.price * item.quantity);
+                    return sum + (getItemPrice(item) * item.quantity);
                   }
                   return sum;
                 }, 0);
               } else {
-                // No bundle offer, show subtotal
-                nonMatchingProductsTotal = cart.total || 0;
+                // No bundle offer, recalculate total based on current currency
+                nonMatchingProductsTotal = cart.items.reduce((sum, item) => {
+                  return sum + (getItemPrice(item) * item.quantity);
+                }, 0);
               }
               
               // Calculate coupon discount for display
@@ -516,21 +743,29 @@ const Cart = () => {
               
               return (
                 <>
-                  {appliedBundleOffer && bundlePriceDisplay > 0 && (
-                    <div className="summary-bundle-price">
-                      <span>
-                        Bundle Offer ({appliedBundleOffer.offer.code}): 
-                        <span style={{ fontSize: '12px', display: 'block', color: '#666' }}>
-                          {(() => {
-                            const bundleQty = (appliedBundleOffer.bundleProducts || []).reduce((sum, p) => sum + p.quantity, 0);
-                            const numberOfBundles = appliedBundleOffer.numberOfBundles || 1;
-                            return `${numberOfBundles} bundle(s) - ${bundleQty} product(s) at bundle price`;
-                          })()}
+                  {appliedBundleOffer && bundlePriceDisplay > 0 && (() => {
+                    // Double-check that country-specific pricing exists
+                    const countryBundlePricing = getBundlePriceForCountry(appliedBundleOffer.offer);
+                    if (countryBundlePricing === null) {
+                      return null; // Don't show if no country-specific pricing
+                    }
+                    return (
+                      <div className="summary-bundle-price">
+                        <span>
+                          Bundle Offer ({appliedBundleOffer.offer.code}): 
+                          <span style={{ fontSize: '12px', display: 'block', color: '#666' }}>
+                            {(() => {
+                              const bundleQty = (appliedBundleOffer.bundleProducts || []).reduce((sum, p) => sum + p.quantity, 0);
+                              const numberOfBundles = appliedBundleOffer.numberOfBundles || 1;
+                              return `${numberOfBundles} bundle(s) - ${bundleQty} product(s) at bundle price`;
+                            })()}
+                          </span>
                         </span>
-                      </span>
-                      <span>₹{bundlePriceDisplay.toFixed(2)}</span>
-                    </div>
-                  )}
+                        {/* Always show bundle price in the bundle's own currency */}
+                        <span>{formatPrice(bundlePriceDisplay, bundleCurrency)}</span>
+                      </div>
+                    );
+                  })()}
                   
                   {appliedBundleOffer && originalPriceProductsTotal > 0 && (
                     <div className="summary-original-price-products">
@@ -543,7 +778,7 @@ const Cart = () => {
                           })()}
                         </span>
                       </span>
-                      <span>₹{originalPriceProductsTotal.toFixed(2)}</span>
+                      <span>{formatPrice(originalPriceProductsTotal, currency)}</span>
                     </div>
                   )}
                   
@@ -555,14 +790,14 @@ const Cart = () => {
                           Products not in offer
                         </span>
                       </span>
-                      <span>₹{nonMatchingProductsTotal.toFixed(2)}</span>
+                      <span>{formatPrice(nonMatchingProductsTotal, currency)}</span>
                     </div>
                   )}
                   
                   {!appliedBundleOffer && (
                     <div className="summary-subtotal">
                       <span>Subtotal:</span>
-                      <span>₹{(cart.total || 0).toFixed(2)}</span>
+                      <span>{formatPrice(calculateSubtotal(), currency)}</span>
                     </div>
                   )}
                   
@@ -572,9 +807,9 @@ const Cart = () => {
                         Discount ({appliedCoupon.code}): 
                         {appliedCoupon.discountType === 'percentage' 
                           ? ` -${appliedCoupon.discount}%` 
-                          : ` -₹${appliedCoupon.discount}`}
+                          : ` -${formatPrice(appliedCoupon.discount, currency)}`}
                       </span>
-                      <span>-₹{couponDiscountDisplay.toFixed(2)}</span>
+                      <span>-{formatPrice(couponDiscountDisplay, currency)}</span>
                     </div>
                   )}
                   
@@ -585,11 +820,7 @@ const Cart = () => {
                   
                   <div className="summary-place-order-price">
                     <span>Order Total:</span>
-                    <span>₹{(() => {
-                      // Use the same calculation as Place Order button
-                      const finalTotal = calculateCartTotal();
-                      return finalTotal.toFixed(2);
-                    })()}</span>
+                    <span>{formatPrice(calculateCartTotal(), currency)}</span>
                   </div>
                   
                   <button
@@ -629,8 +860,12 @@ const Cart = () => {
                   }}>
                     <div>
                       <div style={{ fontWeight: '600', color: '#059669' }}>
-                        📦 {appliedBundleOffer.offer.bundleDisplayText || 
-                             `${appliedBundleOffer.bundleQuantity || appliedBundleOffer.offer.bundleQuantity || 'X'} products at ₹${appliedBundleOffer.bundlePrice}`}
+                        📦 {(() => {
+                          const countryBundlePricing = getBundlePriceForCountry(appliedBundleOffer.offer);
+                          const bundlePricePerBundle = countryBundlePricing?.bundlePrice || appliedBundleOffer.bundlePrice || 0;
+                          return appliedBundleOffer.offer.bundleDisplayText || 
+                                 `${appliedBundleOffer.bundleQuantity || appliedBundleOffer.offer.bundleQuantity || 'X'} products at ${formatPrice(bundlePricePerBundle, countryBundlePricing?.currency || getUserCurrency())}`;
+                        })()}
                       </div>
                       <div style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
                         Code: {appliedBundleOffer.offer.code}
@@ -670,7 +905,7 @@ const Cart = () => {
                         🎟️ {appliedCoupon.code} - {appliedCoupon.couponDisplayText || 
                           (appliedCoupon.discountType === 'percentage' 
                             ? `${appliedCoupon.discount}% OFF` 
-                            : `₹${appliedCoupon.discount} OFF`)}
+                            : `${formatPrice(appliedCoupon.discount)} OFF`)}
                       </div>
                       {appliedCoupon.description && (
                         <div style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
@@ -704,7 +939,22 @@ const Cart = () => {
 
             <div className="summary-row">
               <span>Subtotal:</span>
-              <span>₹{cart.total}</span>
+              <span>{(() => {
+                const subtotal = calculateSubtotal();
+                const currency = cart?.items?.length > 0 ? (() => {
+                  const firstItem = cart.items[0];
+                  if (firstItem.product) {
+                    if (firstItem.size) {
+                      const sizePricing = getSizePriceForCountry(firstItem.product, firstItem.size);
+                      return sizePricing.currency;
+                    } else {
+                      const countryPricing = getProductPriceForCountry(firstItem.product);
+                      return countryPricing.currency;
+                    }
+                  }
+                })() : getUserCurrency();
+                return formatPrice(subtotal, currency);
+              })()}</span>
             </div>
             
             {appliedBundleOffer && (
@@ -716,15 +966,24 @@ const Cart = () => {
                   </span>
                 </span>
                 <span>
-                  -₹{(() => {
+                  -{formatPrice(() => {
+                    // Get country-specific bundle price
+                    const countryBundlePricing = getBundlePriceForCountry(appliedBundleOffer.offer);
+                    const bundlePricePerBundle = countryBundlePricing?.bundlePrice || appliedBundleOffer.bundlePrice || 0;
+                    const numberOfBundles = appliedBundleOffer.numberOfBundles || 1;
+                    const totalBundlePrice = bundlePricePerBundle * numberOfBundles;
+                    
                     const bundleProductsTotal = appliedBundleOffer.matchingProducts.reduce((sum, match) => {
                       const cartItem = cart.items.find(item => 
                         item.product._id === match.productId || item.product._id.toString() === match.productId
                       );
-                      return sum + (cartItem ? cartItem.price * cartItem.quantity : 0);
+                      if (cartItem) {
+                        return sum + (getItemPrice(cartItem) * cartItem.quantity);
+                      }
+                      return sum;
                     }, 0);
-                    return (bundleProductsTotal - appliedBundleOffer.bundlePrice).toFixed(2);
-                  })()}
+                    return bundleProductsTotal - totalBundlePrice;
+                  }(), getCurrency())}
                 </span>
               </div>
             )}
@@ -735,10 +994,10 @@ const Cart = () => {
                   Discount ({appliedCoupon.code}): 
                   {appliedCoupon.discountType === 'percentage' 
                     ? ` -${appliedCoupon.discount}%` 
-                    : ` -₹${appliedCoupon.discount}`}
+                    : ` -${formatPrice(appliedCoupon.discount)}`}
                 </span>
                 <span>
-                  -₹{(() => {
+                  -{formatPrice(() => {
                     let totalForDiscount = cart?.total || 0;
                     if (appliedBundleOffer) {
                       const bundleProductsTotal = appliedBundleOffer.matchingProducts.reduce((sum, match) => {
@@ -752,8 +1011,8 @@ const Cart = () => {
                     const discount = appliedCoupon.discountType === 'percentage'
                       ? (totalForDiscount * appliedCoupon.discount) / 100
                       : appliedCoupon.discount;
-                    return discount.toFixed(2);
-                  })()}
+                    return discount;
+                  }())}
                 </span>
               </div>
             )}
@@ -764,7 +1023,7 @@ const Cart = () => {
             </div>
             <div className="summary-row total">
               <span>Total:</span>
-              <span>₹{calculateCartTotal().toFixed(2)}</span>
+              <span>{formatPrice(calculateCartTotal())}</span>
             </div>
             <button
               onClick={() => navigate('/checkout')}

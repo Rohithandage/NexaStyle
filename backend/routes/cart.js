@@ -166,6 +166,109 @@ router.delete('/clear', auth, async (req, res) => {
   }
 });
 
+// Helper function to get bundle price for a country
+// Returns null if country-specific pricing is required but not found
+// currency parameter is optional and used as fallback if country doesn't match
+// Country code to country name mapping for better matching
+const COUNTRY_CODE_TO_NAME = {
+  'IN': 'India',
+  'US': 'United States',
+  'USA': 'United States',
+  'GB': 'United Kingdom',
+  'UK': 'United Kingdom',
+  'CA': 'Canada',
+  'DE': 'Germany',
+  'FR': 'France',
+  'IT': 'Italy',
+  'ES': 'Spain',
+  'NL': 'Netherlands',
+  'BE': 'Belgium',
+  'AT': 'Austria',
+  'PT': 'Portugal',
+  'CN': 'China',
+  'CHINA': 'China'
+};
+
+const getBundlePriceForCountry = (offer, country, currency = null) => {
+  if (!offer || !country) {
+    // If pricingByCountry exists but no country provided, return null
+    if (offer?.pricingByCountry && Array.isArray(offer.pricingByCountry) && offer.pricingByCountry.length > 0) {
+      return null;
+    }
+    return offer?.bundlePrice || 0;
+  }
+  
+  // Check if offer has country-specific pricing
+  if (offer.pricingByCountry && Array.isArray(offer.pricingByCountry) && offer.pricingByCountry.length > 0) {
+    const countryLower = country ? country.toLowerCase().trim() : '';
+    const countryUpper = country ? country.toUpperCase().trim() : '';
+    const safeCurrency = (typeof currency === 'string' && currency.trim() !== '') ? currency.toUpperCase().trim() : null;
+    
+    // Try to get country name from country code if it's a code
+    const countryNameFromCode = COUNTRY_CODE_TO_NAME[countryUpper] || country;
+    const countryNameLower = countryNameFromCode.toLowerCase().trim();
+    
+    console.log(`🔍 Checking bundle price for country: "${country}" (normalized: "${countryLower}"), currency: "${safeCurrency}"`);
+    console.log(`🔍 Country name from code mapping: "${countryNameFromCode}" (normalized: "${countryNameLower}")`);
+    console.log(`📋 Available pricingByCountry:`, offer.pricingByCountry.map(p => ({ country: p.country, currency: p.currency, bundlePrice: p.bundlePrice })));
+    
+    let countryPricing = null;
+    
+    // Priority 1: Try exact country match (original country name)
+    if (countryLower) {
+      countryPricing = offer.pricingByCountry.find(
+        p => p && p.country && p.country.toLowerCase().trim() === countryLower
+      );
+      
+      if (countryPricing) {
+        console.log(`✅ Exact country match found for "${country}":`, countryPricing);
+      }
+    }
+    
+    // Priority 2: Try exact match with country name from code mapping
+    if (!countryPricing && countryNameLower && countryNameLower !== countryLower) {
+      countryPricing = offer.pricingByCountry.find(
+        p => p && p.country && p.country.toLowerCase().trim() === countryNameLower
+      );
+      
+      if (countryPricing) {
+        console.log(`✅ Country name match found (from code mapping) for "${country}" -> "${countryNameFromCode}":`, countryPricing);
+      }
+    }
+    
+    // Priority 3: Try partial country match
+    if (!countryPricing && countryLower) {
+      countryPricing = offer.pricingByCountry.find(
+        p => {
+          if (!p || !p.country) return false;
+          const pCountry = p.country.toLowerCase().trim();
+          return pCountry.includes(countryLower) || countryLower.includes(pCountry) ||
+                 pCountry.includes(countryNameLower) || countryNameLower.includes(pCountry);
+        }
+      );
+      if (countryPricing) {
+        console.log(`✅ Partial country match found for "${country}":`, countryPricing);
+      }
+    }
+    
+    // IMPORTANT: When pricingByCountry is defined, we ONLY match by country, NOT by currency
+    // This ensures that if a country doesn't have pricing configured, the offer is not shown
+    // Currency matching is removed to prevent showing offers for countries without pricing
+    
+    if (countryPricing && countryPricing.bundlePrice !== undefined && countryPricing.bundlePrice !== null) {
+      console.log(`✅ Returning bundle price: ${countryPricing.bundlePrice} for country: ${countryPricing.country}, currency: ${countryPricing.currency}`);
+      return countryPricing.bundlePrice;
+    }
+    
+    // If pricingByCountry exists but no country match found, return null (offer not applicable for this country)
+    console.log(`❌ No country match found for "${country}" (or "${countryNameFromCode}") in pricingByCountry - offer not applicable`);
+    return null;
+  }
+  
+  // If no pricingByCountry is defined, use default bundle price (backward compatibility)
+  return offer.bundlePrice || 0;
+};
+
 // Check for applicable bundle and carousel offers
 router.get('/bundle-offers', auth, async (req, res) => {
   try {
@@ -175,18 +278,29 @@ router.get('/bundle-offers', auth, async (req, res) => {
       return res.json({ applicableOffers: [] });
     }
 
+    // Get user's country from request (could be from header, query, or default to India)
+    const userCountry = req.query.country || req.headers['x-user-country'] || 'India';
+    const userCurrency = req.query.currency || req.headers['x-user-currency'] || null;
+    console.log('🔍 Bundle offers request - User country:', userCountry, 'User currency:', userCurrency);
+
     // Get all active bundle and carousel offers
     const bundleOffers = await Offer.find({ 
       offerType: { $in: ['bundle', 'carousel'] },
       isActive: true 
     }).populate('products').populate('carouselId');
 
-    console.log('Found offers:', bundleOffers.length, bundleOffers.map(o => ({ type: o.offerType, code: o.code, productsCount: o.products?.length })));
+    console.log('Found offers:', bundleOffers.length, bundleOffers.map(o => ({ 
+      type: o.offerType, 
+      code: o.code, 
+      productsCount: o.products?.length,
+      pricingByCountry: o.pricingByCountry || []
+    })));
 
     const applicableOffers = [];
 
     for (const offer of bundleOffers) {
-      console.log(`Processing offer: ${offer.code}, type: ${offer.offerType}, products: ${offer.products?.length || 0}`);
+      console.log(`\n🔍 Processing offer: ${offer.code}, type: ${offer.offerType}, products: ${offer.products?.length || 0}`);
+      console.log(`📋 Offer ${offer.code} pricingByCountry:`, JSON.stringify(offer.pricingByCountry || [], null, 2));
       // Get offer product IDs
       const offerProductIds = offer.products.map(p => p._id.toString());
       
@@ -261,7 +375,16 @@ router.get('/bundle-offers', auth, async (req, res) => {
         
         const bundleTotal = bundleProducts.reduce((sum, item) => sum + (item.price * item.quantity), 0);
         const originalTotal = matchingProducts.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        const totalBundlePrice = numberOfBundles * offer.bundlePrice;
+        
+        // Get country-specific bundle price (pass currency as well for fallback matching)
+        const bundlePrice = getBundlePriceForCountry(offer, userCountry, userCurrency);
+        
+        // If bundle price is null, it means country-specific pricing is required but not found
+        if (bundlePrice === null) {
+          return null; // Indicate this offer is not applicable for this country
+        }
+        
+        const totalBundlePrice = numberOfBundles * bundlePrice;
         
         return {
           bundleProducts,
@@ -269,7 +392,8 @@ router.get('/bundle-offers', auth, async (req, res) => {
           bundleTotal,
           originalTotal,
           numberOfBundles,
-          totalBundlePrice
+          totalBundlePrice,
+          bundlePrice // Include the country-specific bundle price
         };
       };
 
@@ -280,7 +404,19 @@ router.get('/bundle-offers', auth, async (req, res) => {
         const requiredQuantity = offer.bundleQuantity || 1;
         console.log(`Carousel offer ${offer.code}: total quantity: ${totalQuantity}, required: ${requiredQuantity}`);
         if (matchingProductsInCart.length > 0 && totalQuantity >= requiredQuantity) {
+          // Check if country-specific pricing exists
+          const bundlePrice = getBundlePriceForCountry(offer, userCountry, userCurrency);
+          if (bundlePrice === null) {
+            console.log(`Carousel offer ${offer.code}: Not applicable - no country-specific pricing for ${userCountry}`);
+            continue; // Skip this offer if no country-specific pricing
+          }
+          
           const breakdown = calculateBundleBreakdown(matchingProductsInCart, requiredQuantity);
+          if (breakdown === null) {
+            console.log(`Carousel offer ${offer.code}: Not applicable - breakdown returned null`);
+            continue;
+          }
+          
           console.log(`Carousel offer ${offer.code}: Adding to applicable offers. Bundles: ${breakdown.numberOfBundles}, Bundle products: ${breakdown.bundleProducts.length}, Original price products: ${breakdown.originalPriceProducts.length}`);
           applicableOffers.push({
             offer,
@@ -291,7 +427,7 @@ router.get('/bundle-offers', auth, async (req, res) => {
             })),
             bundleProducts: breakdown.bundleProducts,
             originalPriceProducts: breakdown.originalPriceProducts,
-            bundlePrice: offer.bundlePrice,
+            bundlePrice: breakdown.bundlePrice || bundlePrice,
             bundleQuantity: requiredQuantity,
             numberOfBundles: breakdown.numberOfBundles,
             totalBundlePrice: breakdown.totalBundlePrice,
@@ -334,7 +470,20 @@ router.get('/bundle-offers', auth, async (req, res) => {
           const totalQuantity = matchingProducts.reduce((sum, item) => sum + item.quantity, 0);
           const requiredQuantity = offer.bundleQuantity || 1;
           if (matchingProducts.length > 0 && totalQuantity >= requiredQuantity) {
+            // Check if country-specific pricing exists
+            console.log(`\n🔍 Checking bundle price for offer ${offer.code} (bundle with category only) - User country: "${userCountry}", User currency: "${userCurrency}"`);
+            const bundlePrice = getBundlePriceForCountry(offer, userCountry, userCurrency);
+            if (bundlePrice === null) {
+              console.log(`❌ Bundle offer ${offer.code}: Not applicable - no country-specific pricing for ${userCountry}`);
+              continue; // Skip this offer if no country-specific pricing
+            }
+            console.log(`✅ Bundle offer ${offer.code}: Bundle price found: ${bundlePrice} for ${userCountry}`);
+            
             const breakdown = calculateBundleBreakdown(matchingProducts, requiredQuantity);
+            if (breakdown === null) {
+              continue; // Skip if breakdown is null
+            }
+            
             applicableOffers.push({
               offer,
               matchingProducts: matchingProducts.map(item => ({
@@ -344,7 +493,7 @@ router.get('/bundle-offers', auth, async (req, res) => {
               })),
               bundleProducts: breakdown.bundleProducts,
               originalPriceProducts: breakdown.originalPriceProducts,
-              bundlePrice: offer.bundlePrice,
+              bundlePrice: breakdown.bundlePrice || bundlePrice,
               bundleQuantity: requiredQuantity,
               numberOfBundles: breakdown.numberOfBundles,
               totalBundlePrice: breakdown.totalBundlePrice,
@@ -362,7 +511,18 @@ router.get('/bundle-offers', auth, async (req, res) => {
           const totalQuantity = matchingProducts.reduce((sum, item) => sum + item.quantity, 0);
           const requiredQuantity = offer.bundleQuantity || 1;
           if (matchingProducts.length > 0 && totalQuantity >= requiredQuantity) {
+            // Check if country-specific pricing exists
+            const bundlePrice = getBundlePriceForCountry(offer, userCountry, userCurrency);
+            if (bundlePrice === null) {
+              console.log(`Bundle offer ${offer.code}: Not applicable - no country-specific pricing for ${userCountry}`);
+              continue; // Skip this offer if no country-specific pricing
+            }
+            
             const breakdown = calculateBundleBreakdown(matchingProducts, requiredQuantity);
+            if (breakdown === null) {
+              continue; // Skip if breakdown is null
+            }
+            
             applicableOffers.push({
               offer,
               matchingProducts: matchingProducts.map(item => ({
@@ -372,7 +532,7 @@ router.get('/bundle-offers', auth, async (req, res) => {
               })),
               bundleProducts: breakdown.bundleProducts,
               originalPriceProducts: breakdown.originalPriceProducts,
-              bundlePrice: offer.bundlePrice,
+              bundlePrice: breakdown.bundlePrice || bundlePrice,
               bundleQuantity: requiredQuantity,
               numberOfBundles: breakdown.numberOfBundles,
               totalBundlePrice: breakdown.totalBundlePrice,
@@ -386,7 +546,20 @@ router.get('/bundle-offers', auth, async (req, res) => {
         const totalQuantity = matchingProductsInCart.reduce((sum, item) => sum + item.quantity, 0);
         const requiredQuantity = offer.bundleQuantity || 1;
         if (matchingProductsInCart.length > 0 && totalQuantity >= requiredQuantity) {
+          // Check if country-specific pricing exists
+          console.log(`\n🔍 Checking bundle price for offer ${offer.code} (bundle with products only) - User country: "${userCountry}", User currency: "${userCurrency}"`);
+          const bundlePrice = getBundlePriceForCountry(offer, userCountry, userCurrency);
+          if (bundlePrice === null) {
+            console.log(`❌ Bundle offer ${offer.code}: Not applicable - no country-specific pricing for ${userCountry}`);
+            continue; // Skip this offer if no country-specific pricing
+          }
+          console.log(`✅ Bundle offer ${offer.code}: Bundle price found: ${bundlePrice} for ${userCountry}`);
+          
           const breakdown = calculateBundleBreakdown(matchingProductsInCart, requiredQuantity);
+          if (breakdown === null) {
+            continue; // Skip if breakdown is null
+          }
+          
           applicableOffers.push({
             offer,
             matchingProducts: matchingProductsInCart.map(item => ({
@@ -396,7 +569,7 @@ router.get('/bundle-offers', auth, async (req, res) => {
             })),
             bundleProducts: breakdown.bundleProducts,
             originalPriceProducts: breakdown.originalPriceProducts,
-            bundlePrice: offer.bundlePrice,
+            bundlePrice: breakdown.bundlePrice || bundlePrice,
             bundleQuantity: requiredQuantity,
             numberOfBundles: breakdown.numberOfBundles,
             totalBundlePrice: breakdown.totalBundlePrice,
@@ -416,5 +589,6 @@ router.get('/bundle-offers', auth, async (req, res) => {
 });
 
 module.exports = router;
+
 
 

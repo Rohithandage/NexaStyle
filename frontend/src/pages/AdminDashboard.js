@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import api from '../api/api';
 import { toast } from 'react-toastify';
 import { getImageUrl, getBackendUrl } from '../utils/config';
+import { getCurrencyForCountry, formatPrice } from '../utils/currency';
 import './AdminDashboard.css';
 
 const AdminDashboard = () => {
@@ -25,6 +26,7 @@ const AdminDashboard = () => {
   const [editingCarouselItem, setEditingCarouselItem] = useState(null);
   const [showCarouselItemForm, setShowCarouselItemForm] = useState(false);
   const [selectedProductsForCarousel, setSelectedProductsForCarousel] = useState([]);
+  const [selectedCountriesForCarouselItem, setSelectedCountriesForCarouselItem] = useState([]);
   const [logo, setLogo] = useState(null);
   const [productForm, setProductForm] = useState({
     name: '',
@@ -37,7 +39,8 @@ const AdminDashboard = () => {
     sizes: [],
     colors: [],
     getPrintName: '',
-    isTrending: false
+    isTrending: false,
+    pricingByCountry: []
   });
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [selectedOrderAddress, setSelectedOrderAddress] = useState(null);
@@ -54,6 +57,17 @@ const AdminDashboard = () => {
   const [offers, setOffers] = useState([]);
   const [showOfferForm, setShowOfferForm] = useState(false);
   const [editingOffer, setEditingOffer] = useState(null);
+  const [countryCurrencies, setCountryCurrencies] = useState([]);
+  const [showCountryCurrencyForm, setShowCountryCurrencyForm] = useState(false);
+  const [editingCountryCurrency, setEditingCountryCurrency] = useState(null);
+  const [countryCurrencyForm, setCountryCurrencyForm] = useState({
+    country: '',
+    countryCode: '',
+    currency: '',
+    currencySymbol: '',
+    isActive: true,
+    order: 0
+  });
   const [offerForm, setOfferForm] = useState({
     code: '',
     offerType: 'coupon',
@@ -72,7 +86,10 @@ const AdminDashboard = () => {
     bundleDisplayText: '',
     // Carousel offer fields
     carouselId: '',
-    carouselDisplayText: ''
+    carouselDisplayText: '',
+    // Country-specific pricing
+    pricingByCountry: [],
+    discountByCountry: []
   });
   const [selectedCategoryForOffer, setSelectedCategoryForOffer] = useState('');
   const [selectedSubcategoriesForOffer, setSelectedSubcategoriesForOffer] = useState([]);
@@ -89,11 +106,13 @@ const AdminDashboard = () => {
       fetchHeaderImages();
       fetchCarouselItems();
       fetchLogo();
+      fetchCountryCurrencies(); // Fetch country currencies for carousel country selection
     }
     if (activeTab === 'products') {
       fetchProducts();
       fetchImages();
       fetchCategories(); // Refresh categories to get latest subcategory colors
+      fetchCountryCurrencies(); // Fetch country currencies for product pricing
     }
     if (activeTab === 'trending') {
       fetchProducts();
@@ -112,6 +131,10 @@ const AdminDashboard = () => {
       fetchOffers();
       fetchAllProducts();
       fetchCategories();
+      fetchCountryCurrencies(); // Fetch country currencies for offer pricing
+    }
+    if (activeTab === 'country-currency') {
+      fetchCountryCurrencies();
     }
   }, [activeTab]);
 
@@ -141,11 +164,15 @@ const AdminDashboard = () => {
     }
   }, [showOfferForm, offerForm.offerType]);
 
-  // Fetch products when carousel item form is opened
+  // Fetch products and country currencies when carousel item form is opened
   useEffect(() => {
     if (showCarouselItemForm) {
       if (allProducts.length === 0) {
         fetchAllProducts();
+      }
+      // Fetch country currencies for country selection
+      if (countryCurrencies.length === 0) {
+        fetchCountryCurrencies();
       }
     }
   }, [showCarouselItemForm]);
@@ -423,9 +450,10 @@ const AdminDashboard = () => {
       
       setEditingCarouselItem(null);
       setSelectedProductsForCarousel([]);
+      setSelectedCountriesForCarouselItem([]);
       setShowCarouselItemForm(true);
       // Store the image URL temporarily
-      setEditingCarouselItem({ imageUrl: fullImageUrl, name: '', buttonText: 'Shop Now', productIds: [] });
+      setEditingCarouselItem({ imageUrl: fullImageUrl, name: '', buttonText: 'Shop Now', productIds: [], countries: [] });
     } catch (error) {
       if (error.message && error.message.includes('aspect ratio') || error.message && error.message.includes('too small')) {
         return;
@@ -446,7 +474,8 @@ const AdminDashboard = () => {
         name: editingCarouselItem.name || 'Carousel Item',
         buttonText: editingCarouselItem.buttonText || 'Shop Now',
         productIds: selectedProductsForCarousel,
-        order: editingCarouselItem.order || carouselItems.length
+        order: editingCarouselItem.order || carouselItems.length,
+        countries: selectedCountriesForCarouselItem
       };
 
       if (editingCarouselItem._id) {
@@ -497,6 +526,7 @@ const AdminDashboard = () => {
       productIds = productIds.map(p => p._id || p);
     }
     setSelectedProductsForCarousel(productIds);
+    setSelectedCountriesForCarouselItem(Array.isArray(item.countries) ? item.countries : []);
     setShowCarouselItemForm(true);
   };
 
@@ -1045,13 +1075,35 @@ const AdminDashboard = () => {
         sizeItem.price !== '' && sizeItem.price !== null && sizeItem.price !== undefined
       );
 
+      // Filter out invalid country pricing entries
+      const validCountryPricing = (productForm.pricingByCountry || []).filter(
+        countryPricing => 
+          countryPricing.country && 
+          countryPricing.currency && 
+          countryPricing.price !== '' && 
+          countryPricing.price !== null && 
+          countryPricing.price !== undefined
+      ).map(countryPricing => ({
+        ...countryPricing,
+        price: parseFloat(countryPricing.price),
+        discountPrice: countryPricing.discountPrice ? parseFloat(countryPricing.discountPrice) : undefined,
+        sizes: (countryPricing.sizes || []).filter(sizeItem => 
+          sizeItem.size && sizeItem.price !== '' && sizeItem.price !== null && sizeItem.price !== undefined
+        ).map(sizeItem => ({
+          ...sizeItem,
+          price: parseFloat(sizeItem.price),
+          discountPrice: sizeItem.discountPrice ? parseFloat(sizeItem.discountPrice) : undefined
+        }))
+      }));
+
       const productData = {
         ...productForm,
         price: parseFloat(productForm.price),
         discountPrice: productForm.discountPrice ? parseFloat(productForm.discountPrice) : undefined,
         colors: formattedColors,
         sizes: validSizes,
-        images: allImages // Include both general images and color-specific images
+        images: allImages, // Include both general images and color-specific images
+        pricingByCountry: validCountryPricing
       };
 
       if (editingProduct) {
@@ -1091,7 +1143,8 @@ const AdminDashboard = () => {
         sizes: [],
         colors: [],
         getPrintName: '',
-        isTrending: false
+        isTrending: false,
+        pricingByCountry: []
       });
       fetchProducts();
     } catch (error) {
@@ -1145,7 +1198,8 @@ const AdminDashboard = () => {
       sizes: sizes,
       colors: colors,
       getPrintName: product.getPrintName || '',
-      isTrending: product.isTrending || false
+      isTrending: product.isTrending || false,
+      pricingByCountry: product.pricingByCountry || []
     });
     setShowProductForm(true);
   };
@@ -1159,7 +1213,9 @@ const AdminDashboard = () => {
         }
       });
       toast.success('Product deleted successfully');
+      // Refresh both product lists so changes are visible in all tabs
       fetchProducts();
+      fetchAllProducts();
     } catch (error) {
       toast.error('Error deleting product');
     }
@@ -1305,6 +1361,195 @@ const AdminDashboard = () => {
     setIsEditingCodCharges(false);
   };
 
+  // Country Currency Management
+  const fetchCountryCurrencies = async () => {
+    try {
+      const res = await api.get('/api/admin/country-currencies', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      setCountryCurrencies(res.data || []);
+    } catch (error) {
+      console.error('Error fetching country currencies:', error);
+      toast.error('Error loading country currencies');
+    }
+  };
+
+  const handleCreateCountryCurrency = () => {
+    setCountryCurrencyForm({
+      country: '',
+      countryCode: '',
+      currency: '',
+      currencySymbol: '',
+      isActive: true,
+      order: 0
+    });
+    setEditingCountryCurrency(null);
+    setShowCountryCurrencyForm(true);
+  };
+
+  const handleEditCountryCurrency = (countryCurrency) => {
+    setCountryCurrencyForm({
+      country: countryCurrency.country || '',
+      countryCode: countryCurrency.countryCode || '',
+      currency: countryCurrency.currency || '',
+      currencySymbol: countryCurrency.currencySymbol || '',
+      isActive: countryCurrency.isActive !== undefined ? countryCurrency.isActive : true,
+      order: countryCurrency.order || 0
+    });
+    setEditingCountryCurrency(countryCurrency);
+    setShowCountryCurrencyForm(true);
+  };
+
+  const handleSaveCountryCurrency = async () => {
+    try {
+      if (!countryCurrencyForm.country || !countryCurrencyForm.countryCode || !countryCurrencyForm.currency || !countryCurrencyForm.currencySymbol) {
+        toast.error('Please fill in all required fields');
+        return;
+      }
+
+      const countryCurrencyData = {
+        country: countryCurrencyForm.country.trim(),
+        countryCode: countryCurrencyForm.countryCode.trim().toUpperCase(),
+        currency: countryCurrencyForm.currency.trim().toUpperCase(),
+        currencySymbol: countryCurrencyForm.currencySymbol.trim(),
+        isActive: countryCurrencyForm.isActive,
+        order: parseInt(countryCurrencyForm.order) || 0
+      };
+
+      if (editingCountryCurrency) {
+        await api.put(
+          `/api/admin/country-currencies/${editingCountryCurrency._id}`,
+          countryCurrencyData,
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem('token')}`
+            }
+          }
+        );
+        toast.success('Country Currency updated successfully!');
+      } else {
+        await api.post(
+          '/api/admin/country-currencies',
+          countryCurrencyData,
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem('token')}`
+            }
+          }
+        );
+        toast.success('Country Currency created successfully!');
+      }
+
+      setShowCountryCurrencyForm(false);
+      setEditingCountryCurrency(null);
+      fetchCountryCurrencies();
+    } catch (error) {
+      console.error('Error saving country currency:', error);
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Error saving country currency';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleDeleteCountryCurrency = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this country currency?')) {
+      return;
+    }
+
+    try {
+      await api.delete(`/api/admin/country-currencies/${id}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      toast.success('Country Currency deleted successfully!');
+      fetchCountryCurrencies();
+    } catch (error) {
+      console.error('Error deleting country currency:', error);
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Error deleting country currency';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleToggleCountryCurrency = async (countryCurrency) => {
+    try {
+      const updatedData = {
+        ...countryCurrency,
+        isActive: !countryCurrency.isActive
+      };
+      
+      await api.put(
+        `/api/admin/country-currencies/${countryCurrency._id}`,
+        {
+          country: updatedData.country,
+          countryCode: updatedData.countryCode,
+          currency: updatedData.currency,
+          currencySymbol: updatedData.currencySymbol,
+          isActive: updatedData.isActive,
+          order: updatedData.order || 0
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        }
+      );
+      toast.success(`Country Currency ${updatedData.isActive ? 'enabled' : 'disabled'} successfully!`);
+      fetchCountryCurrencies();
+    } catch (error) {
+      console.error('Error toggling country currency:', error);
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Error updating country currency';
+      toast.error(errorMessage);
+    }
+  };
+
+  const initializeDefaultCountries = async () => {
+    // Default countries from navbar currency selector
+    const defaultCountries = [
+      { country: 'United States', countryCode: 'US', currency: 'USD', currencySymbol: '$', order: 1 },
+      { country: 'United Kingdom', countryCode: 'GB', currency: 'GBP', currencySymbol: '£', order: 2 },
+      { country: 'Canada', countryCode: 'CA', currency: 'CAD', currencySymbol: 'C$', order: 3 },
+      { country: 'Europe', countryCode: 'EU', currency: 'EUR', currencySymbol: '€', order: 4 },
+      { country: 'India', countryCode: 'IN', currency: 'INR', currencySymbol: '₹', order: 5 }
+    ];
+
+    try {
+      // Check which countries already exist
+      const existingCurrencies = countryCurrencies.map(cc => cc.currency.toUpperCase());
+      
+      // Create missing countries
+      for (const defaultCountry of defaultCountries) {
+        if (!existingCurrencies.includes(defaultCountry.currency.toUpperCase())) {
+          try {
+            await api.post(
+              '/api/admin/country-currencies',
+              {
+                ...defaultCountry,
+                isActive: true
+              },
+              {
+                headers: {
+                  Authorization: `Bearer ${localStorage.getItem('token')}`
+                }
+              }
+            );
+          } catch (error) {
+            // If country already exists (race condition), ignore
+            if (error.response?.status !== 400 && error.response?.status !== 409) {
+              console.error(`Error creating ${defaultCountry.country}:`, error);
+            }
+          }
+        }
+      }
+      
+      // Refresh the list
+      fetchCountryCurrencies();
+    } catch (error) {
+      console.error('Error initializing default countries:', error);
+    }
+  };
+
   // Offers Management
   const fetchOffers = async () => {
     try {
@@ -1335,7 +1580,9 @@ const AdminDashboard = () => {
       products: [],
       bundlePrice: '',
       bundleQuantity: '',
-      bundleDisplayText: ''
+      bundleDisplayText: '',
+      pricingByCountry: [],
+      discountByCountry: []
     });
     setSelectedCategoryForOffer('');
     setSelectedSubcategoriesForOffer([]);
@@ -1364,7 +1611,9 @@ const AdminDashboard = () => {
         bundleQuantity: offer.bundleQuantity !== undefined ? offer.bundleQuantity : '',
         bundleDisplayText: offer.bundleDisplayText || '',
         carouselId: offer.carouselId ? (offer.carouselId._id || offer.carouselId) : '',
-        carouselDisplayText: offer.carouselDisplayText || ''
+        carouselDisplayText: offer.carouselDisplayText || '',
+        pricingByCountry: offer.pricingByCountry || [],
+        discountByCountry: offer.discountByCountry || []
       });
       
       // Only handle bundle-specific setup if it's a bundle offer
@@ -1491,7 +1740,26 @@ const AdminDashboard = () => {
         bundleDisplayText: offerForm.offerType === 'bundle' ? offerForm.bundleDisplayText : undefined,
         carouselId: offerForm.offerType === 'carousel' ? offerForm.carouselId : undefined,
         carouselDisplayText: offerForm.offerType === 'carousel' ? offerForm.carouselDisplayText : undefined,
-        discount: offerForm.offerType === 'coupon' ? parseFloat(offerForm.discount) : undefined
+        discount: offerForm.offerType === 'coupon' ? parseFloat(offerForm.discount) : undefined,
+        pricingByCountry: (offerForm.offerType === 'bundle' || offerForm.offerType === 'carousel') && offerForm.pricingByCountry && offerForm.pricingByCountry.length > 0
+          ? offerForm.pricingByCountry
+              .filter(p => p.country && p.currency && p.bundlePrice && p.bundlePrice !== '' && !isNaN(parseFloat(p.bundlePrice)))
+              .map(p => ({
+                country: p.country,
+                currency: p.currency,
+                bundlePrice: parseFloat(p.bundlePrice)
+              }))
+          : (offerForm.offerType === 'bundle' || offerForm.offerType === 'carousel') ? [] : undefined,
+        discountByCountry: offerForm.offerType === 'coupon' && offerForm.discountByCountry && offerForm.discountByCountry.length > 0
+          ? offerForm.discountByCountry
+              .filter(d => d.country && d.currency && d.discount && d.discount !== '' && !isNaN(parseFloat(d.discount)))
+              .map(d => ({
+                country: d.country,
+                currency: d.currency,
+                discount: parseFloat(d.discount),
+                discountType: d.discountType || 'percentage'
+              }))
+          : offerForm.offerType === 'coupon' ? [] : undefined
       };
 
       if (editingOffer) {
@@ -1682,6 +1950,12 @@ const AdminDashboard = () => {
             COD Settings
           </button>
           <button
+            onClick={() => setActiveTab('country-currency')}
+            className={activeTab === 'country-currency' ? 'active' : ''}
+          >
+            Country & Currency
+          </button>
+          <button
             onClick={() => setActiveTab('offers')}
             className={activeTab === 'offers' ? 'active' : ''}
           >
@@ -1753,7 +2027,7 @@ const AdminDashboard = () => {
             </div>
 
             <div className="countries-section">
-              <h2 className="countries-title">Visitors by Country</h2>
+              <h2 className="countries-title">Country-wise Analytics</h2>
               {stats.countries && stats.countries.length > 0 ? (
                 <div className="countries-container">
                   <div className="countries-list">
@@ -1766,9 +2040,21 @@ const AdminDashboard = () => {
                             <span className="country-code">{country.countryCode}</span>
                           </div>
                         </div>
-                        <div className="country-visitors">
-                          <span className="visitor-count">{country.count}</span>
-                          <span className="visitor-label">visitors</span>
+                        <div className="country-stats">
+                          <div className="country-stat-item">
+                            <span className="stat-value-small">{country.views !== undefined ? country.views : (country.count || 0)}</span>
+                            <span className="stat-label-small">Views</span>
+                          </div>
+                          <div className="country-stat-item">
+                            <span className="stat-value-small">{country.orders || 0}</span>
+                            <span className="stat-label-small">Orders</span>
+                          </div>
+                          <div className="country-stat-item revenue-stat">
+                            <span className="stat-value-small revenue-value">
+                              {formatPrice(country.revenue || 0, getCurrencyForCountry(country.country))}
+                            </span>
+                            <span className="stat-label-small">Revenue</span>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -2074,6 +2360,14 @@ const AdminDashboard = () => {
                 </thead>
                 <tbody>
                   {orders.map((order) => {
+                    // Helper function to get currency for an order based on shipping address country
+                    const getOrderCurrency = () => {
+                      if (order.shippingAddress?.country) {
+                        return getCurrencyForCountry(order.shippingAddress.country);
+                      }
+                      // Default to INR if no country is specified (for backward compatibility)
+                      return 'INR';
+                    };
                     // Extract product names from order items
                     const productNames = order.items
                       ?.map(item => {
@@ -2128,7 +2422,7 @@ const AdminDashboard = () => {
                       <tr key={order._id}>
                         <td>#{order._id.slice(-8)}</td>
                         <td>{order.user?.name || 'N/A'}</td>
-                        <td>₹{order.totalAmount}</td>
+                        <td>{formatPrice(order.totalAmount, getOrderCurrency())}</td>
                         <td>
                           {uniqueProductNames.length > 0 
                             ? uniqueProductNames.join(', ') 
@@ -2428,6 +2722,11 @@ const AdminDashboard = () => {
                           <p><strong>{item.name || 'Unnamed'}</strong></p>
                           <p>Button Text: <strong>{item.buttonText || 'Shop Now'}</strong></p>
                           <p>{item.productIds?.length || 0} product(s) selected</p>
+                        {Array.isArray(item.countries) && item.countries.length > 0 && (
+                          <p style={{ fontSize: '11px', color: '#555', marginTop: '4px' }}>
+                            Visible in: <strong>{item.countries.join(', ')}</strong>
+                          </p>
+                        )}
                           {item.imageUrl && (
                             <p style={{ fontSize: '11px', color: '#666', wordBreak: 'break-all' }}>
                               URL: {item.imageUrl.substring(0, 50)}...
@@ -2546,6 +2845,17 @@ const AdminDashboard = () => {
             {showProductForm && (
               <div className="product-form-modal">
                 <div className="product-form-content">
+                  <button
+                    type="button"
+                    className="product-form-close"
+                    onClick={() => {
+                      setShowProductForm(false);
+                      setEditingProduct(null);
+                    }}
+                    aria-label="Close"
+                  >
+                    ×
+                  </button>
                   <h3>{editingProduct ? 'Edit Product' : 'Add New Product'}</h3>
                   <form onSubmit={handleSubmitProduct}>
                     <div className="form-row">
@@ -2948,6 +3258,246 @@ const AdminDashboard = () => {
                     })()}
 
                     <div className="form-group">
+                      <label>Country-Specific Pricing (Optional)</label>
+                      <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.75rem' }}>
+                        Set different prices and currencies for different countries. If not set, default price will be used.
+                      </p>
+                      <div className="country-pricing-container">
+                        {(productForm.pricingByCountry || []).map((countryPricing, countryIndex) => (
+                          <div key={countryIndex} className="country-pricing-item" style={{ 
+                            border: '1px solid #e2e8f0', 
+                            borderRadius: '8px', 
+                            padding: '1rem', 
+                            marginBottom: '1rem',
+                            backgroundColor: '#f8f9fa'
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                              <h4 style={{ margin: 0, fontSize: '1rem' }}>Country Pricing #{countryIndex + 1}</h4>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newPricing = productForm.pricingByCountry.filter((_, i) => i !== countryIndex);
+                                  setProductForm({ ...productForm, pricingByCountry: newPricing });
+                                }}
+                                style={{
+                                  background: '#ef4444',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  padding: '0.4rem 0.8rem',
+                                  cursor: 'pointer',
+                                  fontSize: '0.85rem'
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                            <div className="form-row">
+                              <div className="form-group">
+                                <label>Country *</label>
+                                <select
+                                  value={countryPricing.country || ''}
+                                  onChange={(e) => {
+                                    const newPricing = [...productForm.pricingByCountry];
+                                    const selectedCountry = e.target.value;
+                                    // Find the matching country currency to auto-set currency
+                                    const matchingCurrency = countryCurrencies.find(cc => cc.country === selectedCountry);
+                                    newPricing[countryIndex] = { 
+                                      ...newPricing[countryIndex], 
+                                      country: selectedCountry,
+                                      currency: matchingCurrency ? matchingCurrency.currency : newPricing[countryIndex].currency
+                                    };
+                                    setProductForm({ ...productForm, pricingByCountry: newPricing });
+                                  }}
+                                  required
+                                >
+                                  <option value="">Select Country</option>
+                                  {countryCurrencies
+                                    .sort((a, b) => (a.order || 0) - (b.order || 0) || a.country.localeCompare(b.country))
+                                    .map((cc) => (
+                                      <option key={cc._id} value={cc.country}>
+                                        {cc.country} ({cc.countryCode}){!cc.isActive ? ' (Inactive)' : ''}
+                                      </option>
+                                    ))}
+                                </select>
+                              </div>
+                              <div className="form-group">
+                                <label>Currency *</label>
+                                <select
+                                  value={countryPricing.currency || ''}
+                                  onChange={(e) => {
+                                    const newPricing = [...productForm.pricingByCountry];
+                                    newPricing[countryIndex] = { ...newPricing[countryIndex], currency: e.target.value };
+                                    setProductForm({ ...productForm, pricingByCountry: newPricing });
+                                  }}
+                                  required
+                                >
+                                  <option value="">Select Currency</option>
+                                  {countryCurrencies
+                                    .sort((a, b) => (a.order || 0) - (b.order || 0) || a.currency.localeCompare(b.currency))
+                                    .map((cc) => (
+                                      <option key={cc._id} value={cc.currency}>
+                                        {cc.currency} ({cc.currencySymbol}) - {cc.country}{!cc.isActive ? ' (Inactive)' : ''}
+                                      </option>
+                                    ))}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="form-row">
+                              <div className="form-group">
+                                <label>Price *</label>
+                                <input
+                                  type="number"
+                                  value={countryPricing.price || ''}
+                                  onChange={(e) => {
+                                    const newPricing = [...productForm.pricingByCountry];
+                                    newPricing[countryIndex] = { ...newPricing[countryIndex], price: e.target.value };
+                                    setProductForm({ ...productForm, pricingByCountry: newPricing });
+                                  }}
+                                  required
+                                  min="0"
+                                  step="0.01"
+                                  placeholder="Enter price"
+                                />
+                              </div>
+                              <div className="form-group">
+                                <label>Discount Price (Optional)</label>
+                                <input
+                                  type="number"
+                                  value={countryPricing.discountPrice || ''}
+                                  onChange={(e) => {
+                                    const newPricing = [...productForm.pricingByCountry];
+                                    newPricing[countryIndex] = { ...newPricing[countryIndex], discountPrice: e.target.value };
+                                    setProductForm({ ...productForm, pricingByCountry: newPricing });
+                                  }}
+                                  min="0"
+                                  step="0.01"
+                                  placeholder="Enter discount price"
+                                />
+                              </div>
+                            </div>
+                            <div className="form-group" style={{ marginTop: '0.75rem' }}>
+                              <label>Size-Specific Prices (Optional)</label>
+                              <div className="sizes-container">
+                                {(countryPricing.sizes || []).map((sizeItem, sizeIndex) => (
+                                  <div key={sizeIndex} className="size-item-row">
+                                    <select
+                                      value={sizeItem.size || ''}
+                                      onChange={(e) => {
+                                        const newPricing = [...productForm.pricingByCountry];
+                                        const newSizes = [...(newPricing[countryIndex].sizes || [])];
+                                        newSizes[sizeIndex] = { ...newSizes[sizeIndex], size: e.target.value };
+                                        newPricing[countryIndex] = { ...newPricing[countryIndex], sizes: newSizes };
+                                        setProductForm({ ...productForm, pricingByCountry: newPricing });
+                                      }}
+                                      className="size-select"
+                                    >
+                                      <option value="">Select Size</option>
+                                      <option value="XS">XS</option>
+                                      <option value="S">S</option>
+                                      <option value="M">M</option>
+                                      <option value="L">L</option>
+                                      <option value="XL">XL</option>
+                                      <option value="2XL">2XL</option>
+                                      <option value="3XL">3XL</option>
+                                      <option value="4XL">4XL</option>
+                                      <option value="5XL">5XL</option>
+                                      <option value="6XL">6XL</option>
+                                      <option value="7XL">7XL</option>
+                                    </select>
+                                    <input
+                                      type="number"
+                                      placeholder="Price"
+                                      value={sizeItem.price || ''}
+                                      onChange={(e) => {
+                                        const newPricing = [...productForm.pricingByCountry];
+                                        const newSizes = [...(newPricing[countryIndex].sizes || [])];
+                                        newSizes[sizeIndex] = { ...newSizes[sizeIndex], price: parseFloat(e.target.value) || '' };
+                                        newPricing[countryIndex] = { ...newPricing[countryIndex], sizes: newSizes };
+                                        setProductForm({ ...productForm, pricingByCountry: newPricing });
+                                      }}
+                                      className="size-price"
+                                      min="0"
+                                      step="0.01"
+                                    />
+                                    <input
+                                      type="number"
+                                      placeholder="Discount Price"
+                                      value={sizeItem.discountPrice || ''}
+                                      onChange={(e) => {
+                                        const newPricing = [...productForm.pricingByCountry];
+                                        const newSizes = [...(newPricing[countryIndex].sizes || [])];
+                                        newSizes[sizeIndex] = { ...newSizes[sizeIndex], discountPrice: parseFloat(e.target.value) || '' };
+                                        newPricing[countryIndex] = { ...newPricing[countryIndex], sizes: newSizes };
+                                        setProductForm({ ...productForm, pricingByCountry: newPricing });
+                                      }}
+                                      className="size-discount-price"
+                                      min="0"
+                                      step="0.01"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const newPricing = [...productForm.pricingByCountry];
+                                        const newSizes = (newPricing[countryIndex].sizes || []).filter((_, i) => i !== sizeIndex);
+                                        newPricing[countryIndex] = { ...newPricing[countryIndex], sizes: newSizes };
+                                        setProductForm({ ...productForm, pricingByCountry: newPricing });
+                                      }}
+                                      className="remove-size-btn"
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                ))}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newPricing = [...productForm.pricingByCountry];
+                                    const newSizes = [...(newPricing[countryIndex].sizes || []), { size: '', price: '', discountPrice: '' }];
+                                    newPricing[countryIndex] = { ...newPricing[countryIndex], sizes: newSizes };
+                                    setProductForm({ ...productForm, pricingByCountry: newPricing });
+                                  }}
+                                  className="add-size-btn"
+                                  style={{ marginTop: '0.5rem' }}
+                                >
+                                  + Add Size for this Country
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProductForm({
+                              ...productForm,
+                              pricingByCountry: [...(productForm.pricingByCountry || []), {
+                                country: '',
+                                currency: '',
+                                price: '',
+                                discountPrice: '',
+                                sizes: []
+                              }]
+                            });
+                          }}
+                          style={{
+                            background: '#667eea',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '0.75rem 1.5rem',
+                            cursor: 'pointer',
+                            fontSize: '0.95rem',
+                            fontWeight: '600',
+                            marginTop: '0.5rem'
+                          }}
+                        >
+                          + Add Country Pricing
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="form-group">
                       <label>
                         <input
                           type="checkbox"
@@ -3237,7 +3787,11 @@ const AdminDashboard = () => {
                                   </div>
                                   <div className="product-actions-category">
                                     <button
-                                      onClick={() => handleEditProduct(product)}
+                                      onClick={() => {
+                                        handleEditProduct(product);
+                                        // Switch to the main Products tab so the edit form is visible
+                                        setActiveTab('products');
+                                      }}
                                       className="edit-btn-small"
                                     >
                                       Edit
@@ -3362,6 +3916,173 @@ const AdminDashboard = () => {
               {notes && !isEditingNotes && (
                 <div className="notes-info">
                   <p>Last saved: {originalNotes === notes ? 'Just now' : 'Unsaved changes'}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'country-currency' && (
+          <div className="country-currency-management">
+            <div className="country-currency-header">
+              <h2>Country & Currency Management</h2>
+              <div className="country-currency-header-actions">
+                <button onClick={initializeDefaultCountries} className="initialize-countries-btn">
+                  🔄 Initialize Navbar Countries
+                </button>
+                <button onClick={handleCreateCountryCurrency} className="create-country-currency-btn">
+                  + Add Country & Currency
+                </button>
+              </div>
+            </div>
+
+            {showCountryCurrencyForm && (
+              <div className="country-currency-form-section">
+                <h3>{editingCountryCurrency ? 'Edit Country & Currency' : 'Add New Country & Currency'}</h3>
+                <div className="country-currency-form">
+                  <div className="form-group">
+                    <label>Country Name *</label>
+                    <input
+                      type="text"
+                      value={countryCurrencyForm.country}
+                      onChange={(e) => setCountryCurrencyForm({ ...countryCurrencyForm, country: e.target.value })}
+                      placeholder="e.g., India, USA, United Kingdom"
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Country Code *</label>
+                    <input
+                      type="text"
+                      value={countryCurrencyForm.countryCode}
+                      onChange={(e) => setCountryCurrencyForm({ ...countryCurrencyForm, countryCode: e.target.value.toUpperCase() })}
+                      placeholder="e.g., IN, US, GB"
+                      maxLength="3"
+                      required
+                    />
+                    <small>2-3 letter country code (ISO format)</small>
+                  </div>
+                  <div className="form-group">
+                    <label>Currency Code *</label>
+                    <input
+                      type="text"
+                      value={countryCurrencyForm.currency}
+                      onChange={(e) => setCountryCurrencyForm({ ...countryCurrencyForm, currency: e.target.value.toUpperCase() })}
+                      placeholder="e.g., INR, USD, GBP"
+                      maxLength="3"
+                      required
+                    />
+                    <small>3 letter currency code (ISO format)</small>
+                  </div>
+                  <div className="form-group">
+                    <label>Currency Symbol *</label>
+                    <input
+                      type="text"
+                      value={countryCurrencyForm.currencySymbol}
+                      onChange={(e) => setCountryCurrencyForm({ ...countryCurrencyForm, currencySymbol: e.target.value })}
+                      placeholder="e.g., ₹, $, £, €"
+                      maxLength="5"
+                      required
+                    />
+                    <small>The symbol to display for this currency</small>
+                  </div>
+                  <div className="form-group">
+                    <label>Display Order</label>
+                    <input
+                      type="number"
+                      value={countryCurrencyForm.order}
+                      onChange={(e) => setCountryCurrencyForm({ ...countryCurrencyForm, order: parseInt(e.target.value) || 0 })}
+                      placeholder="0"
+                      min="0"
+                    />
+                    <small>Lower numbers appear first in lists</small>
+                  </div>
+                  <div className="form-group">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={countryCurrencyForm.isActive}
+                        onChange={(e) => setCountryCurrencyForm({ ...countryCurrencyForm, isActive: e.target.checked })}
+                      />
+                      Active
+                    </label>
+                  </div>
+                  <div className="form-actions">
+                    <button onClick={handleSaveCountryCurrency} className="save-btn">
+                      {editingCountryCurrency ? 'Update' : 'Create'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowCountryCurrencyForm(false);
+                        setEditingCountryCurrency(null);
+                      }}
+                      className="cancel-btn"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="country-currency-list">
+              <h3>All Countries & Currencies ({countryCurrencies.length})</h3>
+              {countryCurrencies.length === 0 ? (
+                <p className="no-country-currencies">No country currencies added yet. Add your first country currency!</p>
+              ) : (
+                <div className="country-currency-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Country</th>
+                        <th>Country Code</th>
+                        <th>Currency</th>
+                        <th>Currency Symbol</th>
+                        <th>Order</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {countryCurrencies.map((cc) => (
+                        <tr key={cc._id} className={!cc.isActive ? 'inactive' : ''}>
+                          <td>{cc.country}</td>
+                          <td>{cc.countryCode}</td>
+                          <td>{cc.currency}</td>
+                          <td>{cc.currencySymbol}</td>
+                          <td>{cc.order}</td>
+                          <td>
+                            {cc.isActive ? (
+                              <span className="status-active">Active</span>
+                            ) : (
+                              <span className="status-inactive">Inactive</span>
+                            )}
+                          </td>
+                          <td>
+                            <button
+                              onClick={() => handleToggleCountryCurrency(cc)}
+                              className={`toggle-btn ${cc.isActive ? 'disable-btn' : 'enable-btn'}`}
+                              title={cc.isActive ? 'Disable' : 'Enable'}
+                            >
+                              {cc.isActive ? '⏸️ Disable' : '▶️ Enable'}
+                            </button>
+                            <button
+                              onClick={() => handleEditCountryCurrency(cc)}
+                              className="edit-btn"
+                            >
+                              ✏️ Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteCountryCurrency(cc._id)}
+                              className="delete-btn"
+                            >
+                              🗑️ Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
@@ -3879,6 +4600,221 @@ const AdminDashboard = () => {
                     </>
                   )}
 
+                  {/* Country-Specific Pricing for Bundle/Carousel Offers */}
+                  {(offerForm.offerType === 'bundle' || offerForm.offerType === 'carousel') && (
+                    <div className="form-group">
+                      <label>Country-Specific Pricing (Optional)</label>
+                      <small style={{ display: 'block', marginBottom: '10px', color: '#666' }}>
+                        Set different bundle prices for different countries. If not set, the default bundle price will be used.
+                      </small>
+                      {(offerForm.pricingByCountry || []).map((pricing, index) => (
+                        <div key={index} style={{ marginBottom: '15px', padding: '15px', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9' }}>
+                          <div style={{ display: 'flex', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                            <div style={{ flex: 1, minWidth: '150px' }}>
+                              <label>Country *</label>
+                              <select
+                                value={pricing.country || ''}
+                                onChange={(e) => {
+                                  const updated = [...(offerForm.pricingByCountry || [])];
+                                  const selectedCountry = e.target.value;
+                                  // Find the matching country currency to auto-set currency
+                                  const matchingCurrency = countryCurrencies.find(cc => cc.country === selectedCountry);
+                                  updated[index] = { 
+                                    ...updated[index], 
+                                    country: selectedCountry,
+                                    currency: matchingCurrency ? matchingCurrency.currency : updated[index].currency
+                                  };
+                                  setOfferForm({ ...offerForm, pricingByCountry: updated });
+                                }}
+                              >
+                                <option value="">Select Country</option>
+                                {countryCurrencies
+                                  .sort((a, b) => (a.order || 0) - (b.order || 0) || a.country.localeCompare(b.country))
+                                  .map((cc) => (
+                                    <option key={cc._id} value={cc.country}>
+                                      {cc.country} ({cc.countryCode}){!cc.isActive ? ' (Inactive)' : ''}
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+                            <div style={{ flex: 1, minWidth: '150px' }}>
+                              <label>Currency *</label>
+                              <select
+                                value={pricing.currency || ''}
+                                onChange={(e) => {
+                                  const updated = [...(offerForm.pricingByCountry || [])];
+                                  updated[index] = { ...updated[index], currency: e.target.value };
+                                  setOfferForm({ ...offerForm, pricingByCountry: updated });
+                                }}
+                              >
+                                <option value="">Select Currency</option>
+                                {countryCurrencies
+                                  .sort((a, b) => (a.order || 0) - (b.order || 0) || a.currency.localeCompare(b.currency))
+                                  .map((cc) => (
+                                    <option key={cc._id} value={cc.currency}>
+                                      {cc.currency} ({cc.currencySymbol}) - {cc.country}{!cc.isActive ? ' (Inactive)' : ''}
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+                            <div style={{ flex: 1, minWidth: '150px' }}>
+                              <label>Bundle Price *</label>
+                              <input
+                                type="number"
+                                value={pricing.bundlePrice || ''}
+                                onChange={(e) => {
+                                  const updated = [...(offerForm.pricingByCountry || [])];
+                                  updated[index] = { ...updated[index], bundlePrice: e.target.value };
+                                  setOfferForm({ ...offerForm, pricingByCountry: updated });
+                                }}
+                                placeholder="Price"
+                                min="0"
+                                step="0.01"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = (offerForm.pricingByCountry || []).filter((_, i) => i !== index);
+                                setOfferForm({ ...offerForm, pricingByCountry: updated });
+                              }}
+                              style={{ padding: '8px 12px', backgroundColor: '#f44336', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', alignSelf: 'flex-end' }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOfferForm({
+                            ...offerForm,
+                            pricingByCountry: [...(offerForm.pricingByCountry || []), { country: '', currency: '', bundlePrice: '' }]
+                          });
+                        }}
+                        style={{ padding: '8px 16px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                      >
+                        + Add Country Pricing
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Country-Specific Discount for Coupon Offers */}
+                  {offerForm.offerType === 'coupon' && (
+                    <div className="form-group">
+                      <label>Country-Specific Discount (Optional)</label>
+                      <small style={{ display: 'block', marginBottom: '10px', color: '#666' }}>
+                        Set different discount values for different countries. If not set, the default discount will be used.
+                      </small>
+                      {(offerForm.discountByCountry || []).map((discount, index) => (
+                        <div key={index} style={{ marginBottom: '15px', padding: '15px', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9' }}>
+                          <div style={{ display: 'flex', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                            <div style={{ flex: 1, minWidth: '150px' }}>
+                              <label>Country *</label>
+                              <select
+                                value={discount.country || ''}
+                                onChange={(e) => {
+                                  const updated = [...(offerForm.discountByCountry || [])];
+                                  const selectedCountry = e.target.value;
+                                  // Find the matching country currency to auto-set currency
+                                  const matchingCurrency = countryCurrencies.find(cc => cc.country === selectedCountry);
+                                  updated[index] = { 
+                                    ...updated[index], 
+                                    country: selectedCountry,
+                                    currency: matchingCurrency ? matchingCurrency.currency : updated[index].currency
+                                  };
+                                  setOfferForm({ ...offerForm, discountByCountry: updated });
+                                }}
+                              >
+                                <option value="">Select Country</option>
+                                {countryCurrencies
+                                  .sort((a, b) => (a.order || 0) - (b.order || 0) || a.country.localeCompare(b.country))
+                                  .map((cc) => (
+                                    <option key={cc._id} value={cc.country}>
+                                      {cc.country} ({cc.countryCode}){!cc.isActive ? ' (Inactive)' : ''}
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+                            <div style={{ flex: 1, minWidth: '150px' }}>
+                              <label>Currency *</label>
+                              <select
+                                value={discount.currency || ''}
+                                onChange={(e) => {
+                                  const updated = [...(offerForm.discountByCountry || [])];
+                                  updated[index] = { ...updated[index], currency: e.target.value };
+                                  setOfferForm({ ...offerForm, discountByCountry: updated });
+                                }}
+                              >
+                                <option value="">Select Currency</option>
+                                {countryCurrencies
+                                  .sort((a, b) => (a.order || 0) - (b.order || 0) || a.currency.localeCompare(b.currency))
+                                  .map((cc) => (
+                                    <option key={cc._id} value={cc.currency}>
+                                      {cc.currency} ({cc.currencySymbol}) - {cc.country}{!cc.isActive ? ' (Inactive)' : ''}
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+                            <div style={{ flex: 1, minWidth: '120px' }}>
+                              <label>Discount Type *</label>
+                              <select
+                                value={discount.discountType || 'percentage'}
+                                onChange={(e) => {
+                                  const updated = [...(offerForm.discountByCountry || [])];
+                                  updated[index] = { ...updated[index], discountType: e.target.value };
+                                  setOfferForm({ ...offerForm, discountByCountry: updated });
+                                }}
+                              >
+                                <option value="percentage">Percentage (%)</option>
+                                <option value="fixed">Fixed Amount</option>
+                              </select>
+                            </div>
+                            <div style={{ flex: 1, minWidth: '120px' }}>
+                              <label>Discount *</label>
+                              <input
+                                type="number"
+                                value={discount.discount || ''}
+                                onChange={(e) => {
+                                  const updated = [...(offerForm.discountByCountry || [])];
+                                  updated[index] = { ...updated[index], discount: e.target.value };
+                                  setOfferForm({ ...offerForm, discountByCountry: updated });
+                                }}
+                                placeholder={discount.discountType === 'percentage' ? '0-100' : 'Amount'}
+                                min="0"
+                                max={discount.discountType === 'percentage' ? '100' : undefined}
+                                step={discount.discountType === 'percentage' ? '1' : '0.01'}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = (offerForm.discountByCountry || []).filter((_, i) => i !== index);
+                                setOfferForm({ ...offerForm, discountByCountry: updated });
+                              }}
+                              style={{ padding: '8px 12px', backgroundColor: '#f44336', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', alignSelf: 'flex-end' }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOfferForm({
+                            ...offerForm,
+                            discountByCountry: [...(offerForm.discountByCountry || []), { country: '', currency: '', discount: '', discountType: 'percentage' }]
+                          });
+                        }}
+                        style={{ padding: '8px 16px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                      >
+                        + Add Country Discount
+                      </button>
+                    </div>
+                  )}
+
                   <div className="form-group">
                     <label>Description</label>
                     <textarea
@@ -4104,7 +5040,7 @@ const AdminDashboard = () => {
                           Clear All
                         </button>
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+                      <div className="product-selection-grid">
                         {allProducts
                           .filter(p => !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase()))
                           .map((product) => (
@@ -4113,11 +5049,13 @@ const AdminDashboard = () => {
                               style={{
                                 display: 'flex',
                                 alignItems: 'center',
-                                padding: '8px',
+                                padding: '6px 8px',
                                 border: selectedProductsForCarousel.includes(product._id) ? '2px solid #4CAF50' : '1px solid #ddd',
                                 borderRadius: '4px',
                                 cursor: 'pointer',
-                                backgroundColor: selectedProductsForCarousel.includes(product._id) ? '#f0f8f0' : 'white'
+                                backgroundColor: selectedProductsForCarousel.includes(product._id) ? '#f0f8f0' : 'white',
+                                gap: '6px',
+                                minWidth: 0
                               }}
                             >
                               <input
@@ -4130,14 +5068,114 @@ const AdminDashboard = () => {
                                     setSelectedProductsForCarousel(selectedProductsForCarousel.filter(id => id !== product._id));
                                   }
                                 }}
-                                style={{ marginRight: '8px' }}
+                                style={{ flexShrink: 0 }}
                               />
-                              <span style={{ fontSize: '12px', flex: 1 }}>{product.name}</span>
+                              <span style={{ 
+                                fontSize: '11px', 
+                                flex: 1, 
+                                fontWeight: '500',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                minWidth: 0
+                              }}>{product.name}</span>
+                              {selectedProductsForCarousel.includes(product._id) && (
+                                <div style={{ fontSize: '10px', color: '#666', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                                  <span style={{ color: '#4CAF50', fontWeight: '600' }}>
+                                    ₹{product.discountPrice || product.price}
+                                  </span>
+                                  {product.discountPrice && (
+                                    <span style={{ textDecoration: 'line-through', color: '#999', marginLeft: '4px' }}>
+                                      ₹{product.price}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </label>
                           ))}
                       </div>
                       <p style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
                         {selectedProductsForCarousel.length} product(s) selected
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div className="form-group">
+                  <label>Show Carousel Item For Countries</label>
+                  <p style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>
+                    Select the countries where this carousel image should be visible. If you don't select anything, it will be shown for all countries.
+                  </p>
+                  {countryCurrencies.length === 0 ? (
+                    <p style={{ fontSize: '12px', color: '#999' }}>
+                      {countryCurrencies.length === 0 ? 'Loading countries...' : 'No countries configured yet. Go to "Country &amp; Currency" tab to add countries.'}
+                    </p>
+                  ) : (
+                    <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #ddd', padding: '10px', borderRadius: '4px' }}>
+                      <div style={{ marginBottom: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const activeCountries = countryCurrencies.filter(cc => cc.isActive !== false).map(c => c.countryCode);
+                            setSelectedCountriesForCarouselItem(activeCountries);
+                          }}
+                          style={{ padding: '5px 10px', fontSize: '12px' }}
+                        >
+                          Select All Active
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCountriesForCarouselItem([])}
+                          style={{ padding: '5px 10px', fontSize: '12px' }}
+                        >
+                          Clear All (Show For All)
+                        </button>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '8px' }}>
+                        {countryCurrencies.filter(cc => cc.isActive !== false).map((cc) => (
+                          <label
+                            key={cc._id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              padding: '6px 8px',
+                              border: selectedCountriesForCarouselItem.includes(cc.countryCode)
+                                ? '2px solid #4CAF50'
+                                : '1px solid #ddd',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              backgroundColor: selectedCountriesForCarouselItem.includes(cc.countryCode)
+                                ? '#f0f8f0'
+                                : 'white',
+                              fontSize: '12px'
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedCountriesForCarouselItem.includes(cc.countryCode)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedCountriesForCarouselItem([
+                                    ...selectedCountriesForCarouselItem,
+                                    cc.countryCode
+                                  ]);
+                                } else {
+                                  setSelectedCountriesForCarouselItem(
+                                    selectedCountriesForCarouselItem.filter(code => code !== cc.countryCode)
+                                  );
+                                }
+                              }}
+                              style={{ marginRight: '8px' }}
+                            />
+                            <span style={{ flex: 1 }}>
+                              {cc.country} ({cc.countryCode}) - {cc.currency}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                      <p style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
+                        {selectedCountriesForCarouselItem.length > 0
+                          ? `${selectedCountriesForCarouselItem.length} country(ies) selected`
+                          : 'No country selected: this carousel item will be shown for all countries.'}
                       </p>
                     </div>
                   )}

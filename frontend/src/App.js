@@ -4,9 +4,12 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './App.css';
 import { getBackendUrl } from './utils/config';
+import api from './api/api';
+import { updateCurrencySymbolCache } from './utils/currency';
 
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import ScrollToTop from './components/ScrollToTop';
 import Home from './pages/Home';
 import Products from './pages/Products';
 import ProductDetail from './pages/ProductDetail';
@@ -26,6 +29,21 @@ import PrivateRoute from './components/PrivateRoute';
 import AdminRoute from './components/AdminRoute';
 
 function App() {
+  // Fetch currencies on app load to populate currency symbol cache
+  useEffect(() => {
+    const fetchCurrencies = async () => {
+      try {
+        const res = await api.get('/api/settings/currencies');
+        if (res.data && res.data.currencies) {
+          updateCurrencySymbolCache(res.data.currencies);
+        }
+      } catch (error) {
+        console.error('Error fetching currencies on app load:', error);
+      }
+    };
+    fetchCurrencies();
+  }, []);
+
   // Keep-alive ping to prevent Render from sleeping (only in production)
   useEffect(() => {
     if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
@@ -42,6 +60,7 @@ function App() {
   return (
     <AuthProvider>
       <Router>
+        <ScrollToTop />
         <div className="App">
           <Navbar />
           <main className="main-content">

@@ -45,7 +45,7 @@ const orderSchema = new mongoose.Schema({
   },
   paymentMethod: {
     type: String,
-    enum: ['card', 'upi', 'cod'],
+    enum: ['card', 'upi', 'cod', 'paypal'],
     required: true
   },
   paymentStatus: {
@@ -53,8 +53,9 @@ const orderSchema = new mongoose.Schema({
     enum: ['pending', 'completed', 'failed'],
     default: 'pending'
   },
-  paymentId: String, // Razorpay payment ID (after payment)
+  paymentId: String, // Razorpay payment ID or PayPal capture ID (after payment)
   razorpayOrderId: String, // Razorpay order ID (before payment)
+  paypalOrderId: String, // PayPal order ID
   orderStatus: {
     type: String,
     enum: ['pending', 'processing', 'shipped', 'delivered', 'cancelled'],

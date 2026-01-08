@@ -5,6 +5,58 @@ const Order = require('../models/Order');
 const { auth, admin } = require('../middleware/auth');
 const axios = require('axios');
 
+// Helper function to normalize country names (merge duplicates)
+function normalizeCountryName(country) {
+  if (!country) return country;
+  
+  const countryName = country.trim();
+  
+  // Country name normalization map
+  const countryMap = {
+    // United States variations
+    'usa': 'United States',
+    'us': 'United States',
+    'united states': 'United States',
+    'united states of america': 'United States',
+    'u.s.a.': 'United States',
+    'u.s.': 'United States',
+    
+    // United Kingdom variations
+    'uk': 'United Kingdom',
+    'united kingdom': 'United Kingdom',
+    'great britain': 'United Kingdom',
+    'britain': 'United Kingdom',
+    'england': 'United Kingdom',
+    'scotland': 'United Kingdom',
+    'wales': 'United Kingdom',
+    'northern ireland': 'United Kingdom',
+    
+    // Other common variations
+    'uae': 'United Arab Emirates',
+    'united arab emirates': 'United Arab Emirates',
+    'south korea': 'South Korea',
+    'korea': 'South Korea',
+    'north korea': 'North Korea',
+    'russia': 'Russia',
+    'russian federation': 'Russia',
+    'czech republic': 'Czech Republic',
+    'czechia': 'Czech Republic',
+  };
+  
+  // Check exact match (case-insensitive)
+  const normalized = countryMap[countryName.toLowerCase()];
+  if (normalized) {
+    return normalized;
+  }
+  
+  // Return original with proper title case (capitalize first letter of each word)
+  return countryName
+    .toLowerCase()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 // Helper function to check if IP is private/local
 function isPrivateIP(ip) {
   if (!ip || ip === 'unknown' || ip === 'localhost') return true;
@@ -508,26 +560,93 @@ router.get('/dashboard', auth, admin, async (req, res) => {
     const allAnalytics = await Analytics.find({});
 
     const countryStats = {};
+    
+    // Calculate country-wise views from analytics
     allAnalytics.forEach(analytics => {
       if (analytics.visitors && Array.isArray(analytics.visitors)) {
         analytics.visitors.forEach(visitor => {
           if (visitor && visitor.country) {
-            if (!countryStats[visitor.country]) {
-              countryStats[visitor.country] = {
-                country: visitor.country,
+            const normalizedCountry = normalizeCountryName(visitor.country);
+            if (!countryStats[normalizedCountry]) {
+              countryStats[normalizedCountry] = {
+                country: normalizedCountry,
                 countryCode: visitor.countryCode || 'XX',
-                count: 0
+                views: 0,
+                orders: 0,
+                revenue: 0
               };
             }
-            countryStats[visitor.country].count += 1;
+            countryStats[normalizedCountry].views += 1;
+            // Keep the best country code (prefer non-XX codes)
+            if (visitor.countryCode && visitor.countryCode !== 'XX' && countryStats[normalizedCountry].countryCode === 'XX') {
+              countryStats[normalizedCountry].countryCode = visitor.countryCode;
+            }
           }
         });
       }
     });
 
-    // Convert to array and sort by count
+    // Calculate country-wise sales from orders
+    allOrders.forEach(order => {
+      if (order.shippingAddress && order.shippingAddress.country) {
+        const normalizedCountry = normalizeCountryName(order.shippingAddress.country);
+        
+        // Initialize if not exists
+        if (!countryStats[normalizedCountry]) {
+          countryStats[normalizedCountry] = {
+            country: normalizedCountry,
+            countryCode: 'XX', // We don't have country code in orders, will try to match from analytics
+            views: 0,
+            orders: 0,
+            revenue: 0
+          };
+        }
+        
+        // Count orders (only completed or non-cancelled)
+        if (order.paymentMethod === 'cod') {
+          if (order.orderStatus !== 'cancelled') {
+            countryStats[normalizedCountry].orders += 1;
+            countryStats[normalizedCountry].revenue += order.totalAmount || 0;
+          }
+        } else {
+          if (order.paymentStatus === 'completed') {
+            countryStats[normalizedCountry].orders += 1;
+            countryStats[normalizedCountry].revenue += order.paidAmount || order.totalAmount || 0;
+          }
+        }
+      }
+    });
+
+    // Try to match country codes from analytics for orders-only countries
+    Object.keys(countryStats).forEach(country => {
+      if (countryStats[country].countryCode === 'XX') {
+        // Try to find country code from analytics data (check both normalized and original names)
+        allAnalytics.forEach(analytics => {
+          if (analytics.visitors && Array.isArray(analytics.visitors)) {
+            analytics.visitors.forEach(visitor => {
+              if (visitor && visitor.countryCode && visitor.countryCode !== 'XX') {
+                const normalizedVisitorCountry = normalizeCountryName(visitor.country);
+                if (normalizedVisitorCountry === country) {
+                  countryStats[country].countryCode = visitor.countryCode;
+                }
+              }
+            });
+          }
+        });
+      }
+    });
+
+    // Convert to array and sort by views (primary) then revenue (secondary)
     const countryStatsArray = Object.values(countryStats)
-      .sort((a, b) => b.count - a.count);
+      .sort((a, b) => {
+        // Sort by total engagement: views + orders, then by revenue
+        const aEngagement = a.views + a.orders;
+        const bEngagement = b.views + b.orders;
+        if (bEngagement !== aEngagement) {
+          return bEngagement - aEngagement;
+        }
+        return b.revenue - a.revenue;
+      });
     
     console.log('Country stats:', countryStatsArray); // Debug log
 

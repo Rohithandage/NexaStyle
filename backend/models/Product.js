@@ -46,6 +46,37 @@ const productSchema = new mongoose.Schema({
       default: 0
     }
   }],
+  pricingByCountry: [{
+    country: {
+      type: String,
+      required: true
+    },
+    currency: {
+      type: String,
+      required: true
+    },
+    price: {
+      type: Number,
+      required: true
+    },
+    discountPrice: {
+      type: Number
+    },
+    sizes: [{
+      size: {
+        type: String,
+        enum: ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', '6XL', '7XL'],
+        required: true
+      },
+      price: {
+        type: Number,
+        required: true
+      },
+      discountPrice: {
+        type: Number
+      }
+    }]
+  }],
   colors: [{
     color: {
       type: String,

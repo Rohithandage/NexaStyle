@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'react-toastify';
 import { getOptimizedImageUrl } from '../utils/config';
+import { formatPrice, getUserCurrency, getCurrencyForCountry, getSizePriceForCountry, getProductPriceForCountry } from '../utils/currency';
 import './Orders.css';
 
 // Color name to hex mapping (same as ProductDetail, Cart, and Checkout)
@@ -87,11 +89,151 @@ const Orders = () => {
   const { isAuthenticated } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchParams] = useSearchParams();
+
+  // Helper function to get currency for an order based on shipping address country
+  const getOrderCurrency = (order) => {
+    if (order.shippingAddress?.country) {
+      return getCurrencyForCountry(order.shippingAddress.country);
+    }
+    return getUserCurrency();
+  };
+
+  // Helper function to recalculate item price based on order's country currency
+  const getOrderItemPrice = (item, order) => {
+    const product = item.product;
+    if (!product) {
+      // Fallback to stored price if product is not available
+      return item.price || 0;
+    }
+
+    // Get country from order's shipping address and format it for the currency functions
+    const orderCountryName = order.shippingAddress?.country;
+    const orderCountry = orderCountryName ? { country: orderCountryName } : null;
+    
+    // Temporarily set the selected currency to match the order's country currency
+    // This ensures we get the correct pricing for that country
+    const originalCurrency = localStorage.getItem('selectedCurrency');
+    const orderCurrency = getOrderCurrency(order);
+    localStorage.setItem('selectedCurrency', orderCurrency);
+    
+    let price = 0;
+    
+    try {
+      // Recalculate price based on country-specific pricing
+      if (item.size) {
+        // Get size-specific pricing for the order's country
+        const sizePricing = getSizePriceForCountry(product, item.size, orderCountry);
+        // Return price in the order's currency
+        price = sizePricing.discountPrice || sizePricing.price || item.price || 0;
+      } else {
+        // Get product-level pricing for the order's country
+        const countryPricing = getProductPriceForCountry(product, orderCountry);
+        // Return price in the order's currency
+        price = countryPricing.discountPrice || countryPricing.price || item.price || 0;
+      }
+    } finally {
+      // Restore original currency selection
+      if (originalCurrency) {
+        localStorage.setItem('selectedCurrency', originalCurrency);
+      } else {
+        localStorage.removeItem('selectedCurrency');
+      }
+    }
+    
+    return price;
+  };
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    fetchOrders();
-  }, [isAuthenticated]);
+    
+    // Check if returning from PayPal payment
+    // PayPal redirects with 'token' parameter, but we also check for 'paypal_order_id'
+    const paypalOrderId = searchParams.get('paypal_order_id') || searchParams.get('token');
+    if (paypalOrderId) {
+      verifyPayPalPayment(paypalOrderId);
+    } else {
+      fetchOrders();
+    }
+  }, [isAuthenticated, searchParams]);
+  
+  const verifyPayPalPayment = async (paypalOrderId) => {
+    try {
+      // Find order with this PayPal order ID
+      const res = await api.get('/api/orders/my-orders', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      const order = res.data.find(o => o.paypalOrderId === paypalOrderId);
+      if (!order) {
+        toast.info('Order not found. Please check your orders.');
+        window.history.replaceState({}, '', '/orders');
+        fetchOrders();
+        return;
+      }
+
+      // Check if payment is already completed
+      if (order.paymentStatus === 'completed') {
+        // Dispatch event to update cart count in Navbar
+        window.dispatchEvent(new Event('cartUpdated'));
+        toast.success('Payment successful! Your order has been confirmed.');
+        window.history.replaceState({}, '', '/orders');
+        fetchOrders();
+        return;
+      }
+
+      // Try to capture PayPal payment
+      let paymentCompleted = false;
+      try {
+        const captureRes = await api.post(`/api/orders/capture-paypal/${order._id}`, {
+          paypalOrderId: paypalOrderId
+        }, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        
+        if (captureRes.data.success && captureRes.data.paymentStatus === 'completed') {
+          paymentCompleted = true;
+        }
+      } catch (captureError) {
+        console.error('Capture error:', captureError);
+        // If capture fails, try verification
+        try {
+          const verifyRes = await api.get(`/api/orders/verify-paypal/${order._id}`, {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem('token')}`
+            }
+          });
+          
+          if (verifyRes.data.paymentStatus === 'completed') {
+            paymentCompleted = true;
+          }
+        } catch (verifyError) {
+          console.error('Verification error:', verifyError);
+        }
+      }
+
+      // Show success message only once
+      if (paymentCompleted) {
+        // Dispatch event to update cart count in Navbar
+        window.dispatchEvent(new Event('cartUpdated'));
+        toast.success('Payment successful! Your order has been confirmed.');
+      } else {
+        toast.info('Payment is being processed. Please check your orders.');
+      }
+      
+      // Remove paypal_order_id from URL
+      window.history.replaceState({}, '', '/orders');
+      fetchOrders();
+    } catch (error) {
+      console.error('Error verifying PayPal payment:', error);
+      toast.error('Error verifying payment. Please check your orders.');
+      fetchOrders();
+    }
+  };
 
   const fetchOrders = async () => {
     try {
@@ -207,10 +349,10 @@ const Orders = () => {
                             </span>
                           )}
                         </p>
-                        <p>Quantity: {item.quantity} × ₹{item.price}</p>
+                        <p>Quantity: {item.quantity || 1} × {formatPrice(getOrderItemPrice(item, order), getOrderCurrency(order))}</p>
                       </div>
                       <div className="order-item-total">
-                        ₹{item.price * item.quantity}
+                        {formatPrice(getOrderItemPrice(item, order) * (item.quantity || 1), getOrderCurrency(order))}
                       </div>
                     </div>
                   ))}
@@ -245,7 +387,7 @@ const Orders = () => {
                     </div>
                     <div className="total-row total-amount">
                       <span>Total Amount:</span>
-                      <span>₹{order.totalAmount}</span>
+                      <span>{formatPrice(order.totalAmount, getOrderCurrency(order))}</span>
                     </div>
                   </div>
                 </div>

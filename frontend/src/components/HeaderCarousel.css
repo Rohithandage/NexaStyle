@@ -8,6 +8,7 @@
   transform: translateX(-50%);
   background: #f2f2f2;
   display: block;
+  z-index: 1; /* Ensure carousel stays below navbar (z-index: 9999) */
 }
 
 /* STEP 1: Hero wrapper - reserves space BEFORE image loads */
@@ -20,6 +21,7 @@
   position: relative;
   /* Prevent layout shift - always reserve space */
   contain: layout style paint;
+  z-index: 1; /* Ensure it stays below navbar */
 }
 
 @media (min-width: 769px) {
@@ -88,7 +90,7 @@
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.5s ease;
-  z-index: 10;
+  z-index: 1;
   /* Ensure it's positioned relative to hero-wrapper */
   position: absolute;
 }
@@ -97,7 +99,7 @@
   opacity: 1;
   pointer-events: auto;
   visibility: visible;
-  z-index: 5;
+  z-index: 1;
 }
 
 .carousel-container.carousel-hidden {
@@ -174,7 +176,7 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 10;
+  z-index: 2; /* Lower than navbar but above carousel images */
   transition: all 0.3s;
   font-size: 1.5rem;
   color: #333;
@@ -201,7 +203,7 @@
   transform: translateX(-50%);
   display: none; /* Dots removed from carousel */
   gap: 8px;
-  z-index: 10;
+  z-index: 2; /* Lower than navbar but above carousel images */
   /* Reserve space to prevent CLS */
   min-height: 8px;
   padding: 4px 0;
@@ -232,7 +234,7 @@
 
 @media (max-width: 768px) {
   .header-carousel {
-    margin-top: 0; /* Padding handled by main-content */
+    margin-top: 1.5rem; /* Add more space between navbar and carousel on mobile */
   }
 
   .hero-wrapper {
@@ -256,7 +258,7 @@
 
 @media (max-width: 480px) {
   .header-carousel {
-    margin-top: 0; /* Padding handled by main-content */
+    margin-top: 1.25rem; /* Add more space between navbar and carousel on smaller mobile */
   }
 
   .carousel-button {
@@ -278,13 +280,13 @@
 
 @media (min-width: 769px) {
   .header-carousel {
-    margin-top: 2rem;
+    margin-top: 1.5rem; /* Add space between navbar and carousel on desktop */
   }
 }
 
 @media (min-width: 1200px) {
   .header-carousel {
-    margin-top: 2rem;
+    margin-top: 1.5rem; /* Add space between navbar and carousel on desktop */
   }
 }
 
@@ -294,7 +296,7 @@
   bottom: 10px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 15;
+  z-index: 2; /* Lower than navbar but above carousel images */
   display: flex;
   align-items: center;
   justify-content: center;

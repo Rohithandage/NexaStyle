@@ -18,7 +18,7 @@ const offerSchema = new mongoose.Schema({
     min: 0,
     max: 100,
     required: function() {
-      return this.offerType === 'coupon';
+      return this.offerType === 'coupon' && (!this.discountByCountry || this.discountByCountry.length === 0);
     }
   },
   discountType: {
@@ -26,9 +26,32 @@ const offerSchema = new mongoose.Schema({
     enum: ['percentage', 'fixed'],
     default: 'percentage',
     required: function() {
-      return this.offerType === 'coupon';
+      return this.offerType === 'coupon' && (!this.discountByCountry || this.discountByCountry.length === 0);
     }
   },
+  // Country-specific discount for coupon offers
+  discountByCountry: [{
+    country: {
+      type: String,
+      required: true
+    },
+    currency: {
+      type: String,
+      required: true
+    },
+    discount: {
+      type: Number,
+      min: 0,
+      max: 100,
+      required: true
+    },
+    discountType: {
+      type: String,
+      enum: ['percentage', 'fixed'],
+      default: 'percentage',
+      required: true
+    }
+  }],
   couponDisplayText: {
     type: String,
     trim: true
@@ -50,9 +73,25 @@ const offerSchema = new mongoose.Schema({
     type: Number,
     min: 0,
     required: function() {
-      return this.offerType === 'bundle';
+      return (this.offerType === 'bundle' || this.offerType === 'carousel') && (!this.pricingByCountry || this.pricingByCountry.length === 0);
     }
   },
+  // Country-specific pricing for bundle and carousel offers
+  pricingByCountry: [{
+    country: {
+      type: String,
+      required: true
+    },
+    currency: {
+      type: String,
+      required: true
+    },
+    bundlePrice: {
+      type: Number,
+      min: 0,
+      required: true
+    }
+  }],
   bundleQuantity: {
     type: Number,
     min: 1,
