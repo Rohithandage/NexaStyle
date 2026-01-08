@@ -684,6 +684,41 @@ router.post('/settings/cod-charges', auth, admin, async (req, res) => {
   }
 });
 
+// Get reviews enabled setting
+router.get('/settings/reviews-enabled', async (req, res) => {
+  try {
+    const setting = await Settings.findOne({ key: 'reviews_enabled' });
+    const reviewsEnabled = setting ? setting.value === 'true' : true; // Default to enabled
+    res.json({ success: true, reviewsEnabled });
+  } catch (error) {
+    console.error('Error getting reviews enabled setting:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Set reviews enabled setting
+router.post('/settings/reviews-enabled', auth, admin, async (req, res) => {
+  try {
+    const { reviewsEnabled } = req.body;
+    const enabledValue = reviewsEnabled === true || reviewsEnabled === 'true' ? 'true' : 'false';
+    
+    let setting = await Settings.findOne({ key: 'reviews_enabled' });
+    if (setting) {
+      setting.value = enabledValue;
+      setting.updatedAt = new Date();
+      await setting.save();
+    } else {
+      setting = new Settings({ key: 'reviews_enabled', value: enabledValue });
+      await setting.save();
+    }
+    
+    res.json({ success: true, reviewsEnabled: enabledValue === 'true' });
+  } catch (error) {
+    console.error('Error saving reviews enabled setting:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Offer Management
 // Get all offers
 router.get('/offers', async (req, res) => {

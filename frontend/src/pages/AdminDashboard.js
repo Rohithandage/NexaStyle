@@ -10,6 +10,8 @@ const AdminDashboard = () => {
   const [categories, setCategories] = useState([]);
   const [orders, setOrders] = useState([]);
   const [pendingReviews, setPendingReviews] = useState([]);
+  const [allReviews, setAllReviews] = useState([]);
+  const [reviewsEnabled, setReviewsEnabled] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [newSubcategory, setNewSubcategory] = useState({ categoryId: '', name: '', colors: '' });
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -100,6 +102,10 @@ const AdminDashboard = () => {
     fetchCategories();
     fetchOrders();
     fetchPendingReviews();
+    if (activeTab === 'reviews') {
+      fetchAllReviews();
+      fetchReviewsEnabled();
+    }
     if (activeTab === 'images') {
       fetchImages();
       fetchProducts(); // Fetch products to filter out product images
@@ -722,6 +728,58 @@ const AdminDashboard = () => {
     }
   };
 
+  const fetchAllReviews = async () => {
+    try {
+      const res = await api.get('/api/reviews/admin/all', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const reviews = res.data || [];
+      // Ensure isDisabled field exists for all reviews
+      const reviewsWithDefaults = reviews.map(review => ({
+        ...review,
+        isDisabled: review.isDisabled === true
+      }));
+      console.log('Fetched reviews:', reviewsWithDefaults);
+      setAllReviews(reviewsWithDefaults);
+    } catch (error) {
+      console.error('Error loading all reviews:', error);
+      toast.error('Error loading reviews');
+      setAllReviews([]);
+    }
+  };
+
+  const fetchReviewsEnabled = async () => {
+    try {
+      const res = await api.get('/api/admin/settings/reviews-enabled');
+      setReviewsEnabled(res.data.reviewsEnabled !== false); // Default to true
+    } catch (error) {
+      console.error('Error loading reviews enabled setting:', error);
+      setReviewsEnabled(true); // Default to enabled
+    }
+  };
+
+  const handleToggleReviewsEnabled = async () => {
+    try {
+      const newValue = !reviewsEnabled;
+      await api.post(
+        '/api/admin/settings/reviews-enabled',
+        { reviewsEnabled: newValue },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        }
+      );
+      setReviewsEnabled(newValue);
+      toast.success(`Reviews ${newValue ? 'enabled' : 'disabled'} successfully`);
+    } catch (error) {
+      console.error('Error toggling reviews enabled:', error);
+      toast.error('Error updating reviews setting');
+    }
+  };
+
   const handleAddSubcategory = async (e) => {
     e.preventDefault();
     try {
@@ -816,8 +874,28 @@ const AdminDashboard = () => {
       );
       toast.success('Review approved');
       fetchPendingReviews();
+      fetchAllReviews();
     } catch (error) {
       toast.error('Error approving review');
+    }
+  };
+
+  const handleToggleReview = async (reviewId) => {
+    try {
+      await api.put(
+        `/api/reviews/toggle/${reviewId}`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        }
+      );
+      toast.success('Review status updated');
+      fetchAllReviews();
+      fetchPendingReviews();
+    } catch (error) {
+      toast.error('Error updating review');
     }
   };
 
@@ -996,6 +1074,40 @@ const AdminDashboard = () => {
       ...productForm,
       images: productForm.images.filter(img => img !== imageUrl)
     });
+  };
+
+  const handleDownloadImage = async (imageUrl) => {
+    try {
+      const fullUrl = getImageUrl(imageUrl);
+      // Fetch the image as a blob
+      const response = await fetch(fullUrl);
+      const blob = await response.blob();
+      
+      // Create a temporary URL for the blob
+      const url = window.URL.createObjectURL(blob);
+      
+      // Create a temporary anchor element and trigger download
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Extract filename from URL or use a default name
+      const urlParts = fullUrl.split('/');
+      const filename = urlParts[urlParts.length - 1].split('?')[0] || 'product-image';
+      link.download = filename;
+      
+      // Append to body, click, and remove
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up the blob URL
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Image downloaded successfully');
+    } catch (error) {
+      console.error('Error downloading image:', error);
+      toast.error('Error downloading image');
+    }
   };
 
   const handleUploadProductImage = async (e) => {
@@ -2599,33 +2711,117 @@ const AdminDashboard = () => {
 
         {activeTab === 'reviews' && (
           <div className="reviews-management">
-            <h2>Pending Reviews</h2>
-            {pendingReviews.length === 0 ? (
-              <p>No pending reviews</p>
-            ) : (
-              <div className="reviews-list">
-                {pendingReviews.map((review) => (
-                  <div key={review._id} className="review-card">
-                    <div className="review-header">
-                      <div>
-                        <h4>{review.user?.name}</h4>
-                        <p>{review.product?.name}</p>
+            <div style={{ 
+              marginBottom: '2rem', 
+              padding: '1.5rem', 
+              background: '#f8f9fa', 
+              borderRadius: '12px',
+              border: '2px solid #e2e8f0'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <div>
+                  <h2 style={{ margin: 0, marginBottom: '0.5rem' }}>Reviews Settings</h2>
+                  <p style={{ margin: 0, color: '#666', fontSize: '0.9rem' }}>
+                    {reviewsEnabled 
+                      ? 'Reviews are currently enabled and visible on the frontend' 
+                      : 'Reviews are currently disabled and hidden from the frontend'}
+                  </p>
+                </div>
+                <button
+                  onClick={handleToggleReviewsEnabled}
+                  className={reviewsEnabled ? "disable-btn" : "enable-btn"}
+                  style={{ minWidth: '160px', fontSize: '1rem' }}
+                >
+                  {reviewsEnabled ? 'Disable Reviews' : 'Enable Reviews'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '2rem' }}>
+              <h2>Pending Reviews</h2>
+              {pendingReviews.length === 0 ? (
+                <p>No pending reviews</p>
+              ) : (
+                <div className="reviews-list">
+                  {pendingReviews.map((review) => (
+                    <div key={review._id} className="review-card">
+                      <div className="review-header">
+                        <div>
+                          <h4>{review.user?.name}</h4>
+                          <p>{review.product?.name}</p>
+                        </div>
+                        <div className="review-rating">
+                          {'⭐'.repeat(review.rating)}
+                        </div>
                       </div>
-                      <div className="review-rating">
-                        {'⭐'.repeat(review.rating)}
+                      <p className="review-comment">{review.comment}</p>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                        <button
+                          onClick={() => handleApproveReview(review._id)}
+                          className="approve-btn"
+                        >
+                          Approve Review
+                        </button>
+                        <button
+                          onClick={() => handleToggleReview(review._id)}
+                          className={(review.isDisabled === true) ? "enable-btn" : "disable-btn"}
+                          style={{ minWidth: '140px' }}
+                        >
+                          {(review.isDisabled === true) ? 'Enable Review' : 'Disable Review'}
+                        </button>
                       </div>
                     </div>
-                    <p className="review-comment">{review.comment}</p>
-                    <button
-                      onClick={() => handleApproveReview(review._id)}
-                      className="approve-btn"
-                    >
-                      Approve Review
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: '3rem' }}>
+              <h2>All Reviews ({allReviews.length})</h2>
+              {allReviews.length === 0 ? (
+                <p style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px' }}>No reviews found. Reviews will appear here once they are created.</p>
+              ) : (
+                <div className="reviews-list">
+                  {allReviews.map((review) => (
+                    <div key={review._id} className="review-card" style={{
+                      opacity: (review.isDisabled === true) ? 0.6 : 1,
+                      borderLeft: (review.isDisabled === true) ? '4px solid #dc3545' : '4px solid #28a745'
+                    }}>
+                      <div className="review-header">
+                        <div>
+                          <h4>{review.user?.name}</h4>
+                          <p>{review.product?.name}</p>
+                          <p style={{ fontSize: '0.85rem', color: '#666' }}>
+                            {new Date(review.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="review-rating">
+                          {'⭐'.repeat(review.rating)}
+                        </div>
+                      </div>
+                      <p className="review-comment">{review.comment}</p>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                        {!review.isApproved && (
+                          <button
+                            onClick={() => handleApproveReview(review._id)}
+                            className="approve-btn"
+                          >
+                            Approve
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleToggleReview(review._id)}
+                          className={(review.isDisabled === true) ? "enable-btn" : "disable-btn"}
+                          style={{ minWidth: '140px' }}
+                        >
+                          {(review.isDisabled === true) ? 'Enable Review' : 'Disable Review'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -3223,6 +3419,14 @@ const AdminDashboard = () => {
                                                   src={getImageUrl(img)} 
                                                   alt={`${color} ${imgIndex + 1}`}
                                                 />
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleDownloadImage(img)}
+                                                  className="download-image-btn-small"
+                                                  title="Download image"
+                                                >
+                                                  ⬇️
+                                                </button>
                                                 <button
                                                   type="button"
                                                   onClick={() => {
@@ -5040,7 +5244,7 @@ const AdminDashboard = () => {
                           Clear All
                         </button>
                       </div>
-                      <div className="product-selection-grid">
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
                         {allProducts
                           .filter(p => !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase()))
                           .map((product) => (
@@ -5048,44 +5252,36 @@ const AdminDashboard = () => {
                               key={product._id}
                               style={{
                                 display: 'flex',
-                                alignItems: 'center',
-                                padding: '6px 8px',
+                                flexDirection: 'column',
+                                padding: '8px',
                                 border: selectedProductsForCarousel.includes(product._id) ? '2px solid #4CAF50' : '1px solid #ddd',
                                 borderRadius: '4px',
                                 cursor: 'pointer',
-                                backgroundColor: selectedProductsForCarousel.includes(product._id) ? '#f0f8f0' : 'white',
-                                gap: '6px',
-                                minWidth: 0
+                                backgroundColor: selectedProductsForCarousel.includes(product._id) ? '#f0f8f0' : 'white'
                               }}
                             >
-                              <input
-                                type="checkbox"
-                                checked={selectedProductsForCarousel.includes(product._id)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setSelectedProductsForCarousel([...selectedProductsForCarousel, product._id]);
-                                  } else {
-                                    setSelectedProductsForCarousel(selectedProductsForCarousel.filter(id => id !== product._id));
-                                  }
-                                }}
-                                style={{ flexShrink: 0 }}
-                              />
-                              <span style={{ 
-                                fontSize: '11px', 
-                                flex: 1, 
-                                fontWeight: '500',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                minWidth: 0
-                              }}>{product.name}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedProductsForCarousel.includes(product._id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedProductsForCarousel([...selectedProductsForCarousel, product._id]);
+                                    } else {
+                                      setSelectedProductsForCarousel(selectedProductsForCarousel.filter(id => id !== product._id));
+                                    }
+                                  }}
+                                  style={{ marginRight: '8px' }}
+                                />
+                                <span style={{ fontSize: '12px', flex: 1, fontWeight: '500' }}>{product.name}</span>
+                              </div>
                               {selectedProductsForCarousel.includes(product._id) && (
-                                <div style={{ fontSize: '10px', color: '#666', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                                <div style={{ marginLeft: '24px', fontSize: '11px', color: '#666' }}>
                                   <span style={{ color: '#4CAF50', fontWeight: '600' }}>
                                     ₹{product.discountPrice || product.price}
                                   </span>
                                   {product.discountPrice && (
-                                    <span style={{ textDecoration: 'line-through', color: '#999', marginLeft: '4px' }}>
+                                    <span style={{ textDecoration: 'line-through', color: '#999', marginLeft: '6px' }}>
                                       ₹{product.price}
                                     </span>
                                   )}

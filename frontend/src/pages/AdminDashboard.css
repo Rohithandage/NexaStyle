@@ -894,6 +894,48 @@
   transform: translateY(0);
 }
 
+.disable-btn {
+  padding: 0.875rem 1.75rem;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 6px rgba(245, 87, 108, 0.25);
+}
+
+.disable-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(245, 87, 108, 0.35);
+}
+
+.disable-btn:active {
+  transform: translateY(0);
+}
+
+.enable-btn {
+  padding: 0.875rem 1.75rem;
+  background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 6px rgba(67, 233, 123, 0.25);
+}
+
+.enable-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(67, 233, 123, 0.35);
+}
+
+.enable-btn:active {
+  transform: translateY(0);
+}
+
 .images-management {
   background: white;
   padding: 2.5rem;
@@ -1887,6 +1929,31 @@
   object-fit: cover;
 }
 
+.color-image-preview-small .download-image-btn-small {
+  position: absolute;
+  top: -5px;
+  right: 13px;
+  width: 18px;
+  height: 18px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  padding: 0;
+  line-height: 1;
+  z-index: 10;
+}
+
+.color-image-preview-small .download-image-btn-small:hover {
+  background: #218838;
+}
+
 .color-image-preview-small .remove-image-btn-small {
   position: absolute;
   top: -5px;
@@ -1905,6 +1972,7 @@
   transition: background 0.2s;
   padding: 0;
   line-height: 1;
+  z-index: 10;
 }
 
 .color-image-preview-small .remove-image-btn-small:hover {
@@ -4645,19 +4713,6 @@
   .save-btn,
   .cancel-btn {
     width: 100%;
-  }
-}
-
-/* Product selection grid for carousel */
-.product-selection-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 10px;
-}
-
-@media (max-width: 768px) {
-  .product-selection-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   }
 }
 

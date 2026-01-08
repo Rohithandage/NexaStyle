@@ -11,16 +11,30 @@ const Reviews = ({ productId }) => {
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
   const [showAllReviews, setShowAllReviews] = useState(false);
+  const [reviewsEnabled, setReviewsEnabled] = useState(true);
 
   useEffect(() => {
+    fetchReviewsEnabled();
     fetchReviews();
     setShowAllReviews(false); // Reset to show only top 2 when product changes
   }, [productId]);
 
+  const fetchReviewsEnabled = async () => {
+    try {
+      const res = await api.get('/api/admin/settings/reviews-enabled');
+      setReviewsEnabled(res.data.reviewsEnabled !== false); // Default to true
+    } catch (error) {
+      console.error('Error loading reviews enabled setting:', error);
+      setReviewsEnabled(true); // Default to enabled
+    }
+  };
+
   const fetchReviews = async () => {
     try {
       const res = await api.get(`/api/reviews/product/${productId}`);
-      setReviews(res.data);
+      // Backend already filters out disabled reviews, but we'll double-check here
+      const activeReviews = res.data.filter(review => !review.isDisabled);
+      setReviews(activeReviews);
     } catch (error) {
       console.error('Error fetching reviews:', error);
     }
@@ -68,6 +82,11 @@ const Reviews = ({ productId }) => {
       toast.error(errorMessage);
     }
   };
+
+  // If reviews are disabled, don't render anything
+  if (!reviewsEnabled) {
+    return null;
+  }
 
   return (
     <div className="reviews-section">

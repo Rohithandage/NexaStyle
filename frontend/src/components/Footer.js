@@ -2,8 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { 
   FiInstagram,
-  FiMail,
-  FiPhone
+  FiMail
 } from 'react-icons/fi';
 import './Footer.css';
 
@@ -87,10 +86,6 @@ const Footer = () => {
               <li>
                 <FiMail className="contact-icon" />
                 <a href="mailto:nexastyle1@gmail.com">nexastyle1@gmail.com</a>
-              </li>
-              <li>
-                <FiPhone className="contact-icon" />
-                <a href="tel:9130079926">9130079926</a>
               </li>
             </ul>
           </div>
