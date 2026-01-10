@@ -20,7 +20,8 @@ app.set('trust proxy', true);
 const allowedOrigins = [
   'http://localhost:3000',           // Development frontend
   'https://nexastyle.onrender.com',   // Production frontend (Render)
-  'https://nexastyle.netlify.app'    // Production frontend (Netlify)
+  'https://nexastyle.netlify.app',    // Production frontend (Netlify)
+  'https://nexa-style.vercel.app'     // Production frontend (Vercel)
 ];
 
 const corsOptions = {

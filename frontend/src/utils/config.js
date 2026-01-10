@@ -12,8 +12,10 @@ export const getBackendUrl = () => {
     process.env.NODE_ENV === "production" || 
     window.location.hostname === "nexastyle.onrender.com" ||
     window.location.hostname === "nexastyle.netlify.app" ||
+    window.location.hostname === "nexa-style.vercel.app" ||
     window.location.hostname.includes("render.com") ||
-    window.location.hostname.includes("netlify.app");
+    window.location.hostname.includes("netlify.app") ||
+    window.location.hostname.includes("vercel.app");
   
   return isProduction
     ? "https://nexastyle1.onrender.com"
@@ -45,8 +47,10 @@ export const getImageUrl = (imagePath) => {
         process.env.NODE_ENV === "production" || 
         window.location.hostname === "nexastyle.onrender.com" ||
         window.location.hostname === "nexastyle.netlify.app" ||
+        window.location.hostname === "nexa-style.vercel.app" ||
         window.location.hostname.includes("render.com") ||
         window.location.hostname.includes("netlify.app") ||
+        window.location.hostname.includes("vercel.app") ||
         window.location.protocol === "https:"
       );
     
