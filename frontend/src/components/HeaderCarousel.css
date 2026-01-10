@@ -26,8 +26,8 @@
 
 @media (min-width: 769px) {
   .hero-wrapper {
-    max-height: 90vh;   /* Allow larger height on desktop, up to 90% of viewport */
-    min-height: 600px;  /* Minimum height for desktop */
+    max-height: 50vh;   /* Smaller height on desktop, up to 50% of viewport */
+    min-height: 400px;  /* Smaller minimum height for desktop */
     aspect-ratio: 21 / 9; /* Wider aspect ratio for desktop to show more of the image */
   }
 }
@@ -112,7 +112,7 @@
 @media (min-width: 769px) {
   .carousel-container {
     height: 100%; /* Match parent height */
-    max-height: 90vh; /* Match hero-wrapper max-height */
+    max-height: 50vh; /* Match hero-wrapper max-height */
   }
   
   .carousel-slide {
