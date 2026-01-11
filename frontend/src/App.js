@@ -24,6 +24,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsConditions from './pages/TermsConditions';
 import ReturnPolicy from './pages/ReturnPolicy';
 import ShippingPolicy from './pages/ShippingPolicy';
+import ContactUs from './pages/ContactUs';
 import { AuthProvider } from './context/AuthContext';
 import PrivateRoute from './components/PrivateRoute';
 import AdminRoute from './components/AdminRoute';
@@ -77,6 +78,7 @@ function App() {
               <Route path="/terms-conditions" element={<TermsConditions />} />
               <Route path="/return-policy" element={<ReturnPolicy />} />
               <Route path="/shipping-policy" element={<ShippingPolicy />} />
+              <Route path="/contact-us" element={<ContactUs />} />
               <Route
                 path="/checkout"
                 element={
