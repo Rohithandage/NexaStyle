@@ -1,13 +1,142 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { 
   FiInstagram,
-  FiMail
+  FiMail,
+  FiHome,
+  FiShoppingCart
 } from 'react-icons/fi';
+import { 
+  HiUser,
+  HiUserGroup,
+  HiEmojiHappy
+} from 'react-icons/hi';
+import { 
+  IoManOutline,
+  IoWomanOutline
+} from 'react-icons/io5';
+import { useAuth } from '../hooks/useAuth';
+import api from '../api/api';
 import './Footer.css';
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
+  const location = useLocation();
+  const { isAuthenticated } = useAuth();
+  const [cartCount, setCartCount] = useState(0);
+  const [isHeaderVisible, setIsHeaderVisible] = useState(() => {
+    // On mobile, navbar is visible initially, so bottom nav should be hidden
+    // On desktop, always hide bottom nav (it's not shown anyway)
+    return window.innerWidth <= 768;
+  });
+  
+  const isActive = (path) => {
+    if (path === '/') {
+      return location.pathname === '/';
+    }
+    return location.pathname.includes(path);
+  };
+
+  // Detect if header/navbar is visible using Intersection Observer
+  useEffect(() => {
+    const checkHeaderVisibility = () => {
+      // Only run on mobile (max-width: 768px)
+      if (window.innerWidth > 768) {
+        setIsHeaderVisible(true);
+        return null;
+      }
+
+      const navbar = document.querySelector('.navbar');
+      if (!navbar) {
+        // If navbar doesn't exist, show bottom nav by default
+        setIsHeaderVisible(false);
+        return null;
+      }
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            // If navbar is intersecting (visible), set isHeaderVisible to true (will hide bottom nav)
+            // If navbar is not intersecting (scrolled out of view), set isHeaderVisible to false (will show bottom nav)
+            setIsHeaderVisible(entry.isIntersecting);
+          });
+        },
+        {
+          threshold: 0, // Trigger when any part of navbar enters/leaves viewport
+          rootMargin: '0px'
+        }
+      );
+
+      observer.observe(navbar);
+
+      return () => {
+        observer.disconnect();
+      };
+    };
+
+    // Initial check
+    const cleanup = checkHeaderVisibility();
+
+    // Handle window resize
+    const handleResize = () => {
+      if (cleanup) cleanup();
+      checkHeaderVisibility();
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      if (cleanup) cleanup();
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [location.pathname]); // Re-run when route changes
+
+  const fetchCartCount = useCallback(async () => {
+    // Only fetch cart if user is authenticated
+    if (!isAuthenticated) {
+      setCartCount(0);
+      return;
+    }
+    
+    try {
+      const res = await api.get('/api/cart', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (res.data) {
+        const count = res.data.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+        setCartCount(count);
+      }
+    } catch (error) {
+      // Silently handle 401 errors (user not authenticated)
+      if (error.response?.status === 401) {
+        setCartCount(0);
+      }
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchCartCount();
+    } else {
+      setCartCount(0);
+    }
+  }, [isAuthenticated, fetchCartCount]);
+
+  // Listen for cart update events
+  useEffect(() => {
+    const handleCartUpdate = () => {
+      if (isAuthenticated) {
+        fetchCartCount();
+      }
+    };
+
+    window.addEventListener('cartUpdated', handleCartUpdate);
+    return () => {
+      window.removeEventListener('cartUpdated', handleCartUpdate);
+    };
+  }, [isAuthenticated, fetchCartCount]);
 
   return (
     <footer className="footer">
@@ -102,6 +231,55 @@ const Footer = () => {
             </div>
           </div>
         </div>
+      </div>
+      
+      {/* Mobile Bottom Navigation - Fixed at Bottom */}
+      <div className={`mobile-bottom-nav ${!isHeaderVisible ? 'visible' : 'hidden'}`}>
+        <Link 
+          to="/" 
+          className={`mobile-nav-item ${isActive('/') && location.pathname === '/' ? 'active' : ''}`} 
+          aria-label="Home"
+        >
+          <FiHome />
+          <span>Home</span>
+        </Link>
+        <Link 
+          to="/products/Men" 
+          className={`mobile-nav-item ${isActive('/products/Men') ? 'active' : ''}`} 
+          aria-label="Men"
+        >
+          <IoManOutline className="category-icon" />
+          <span>Men</span>
+        </Link>
+        <Link 
+          to="/products/Women" 
+          className={`mobile-nav-item ${isActive('/products/Women') ? 'active' : ''}`} 
+          aria-label="Women"
+        >
+          <IoWomanOutline className="category-icon" />
+          <span>Women</span>
+        </Link>
+        <Link 
+          to="/products/Kids" 
+          className={`mobile-nav-item ${isActive('/products/Kids') ? 'active' : ''}`} 
+          aria-label="Kids"
+        >
+          <HiEmojiHappy className="category-icon" />
+          <span>Kids</span>
+        </Link>
+        <Link 
+          to="/cart" 
+          className={`mobile-nav-item ${isActive('/cart') ? 'active' : ''}`} 
+          aria-label="Cart"
+        >
+          <div className="mobile-cart-icon-wrapper">
+            <FiShoppingCart />
+            {cartCount > 0 && (
+              <span className="mobile-cart-badge">{cartCount}</span>
+            )}
+          </div>
+          <span>Cart</span>
+        </Link>
       </div>
     </footer>
   );

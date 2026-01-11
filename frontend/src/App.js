@@ -59,7 +59,7 @@ function App() {
 
   return (
     <AuthProvider>
-      <Router>
+      <Router future={{ v7_relativeSplatPath: true }}>
         <ScrollToTop />
         <div className="App">
           <Navbar />

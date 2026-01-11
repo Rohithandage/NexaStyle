@@ -20,21 +20,21 @@ body.has-offer-banner .main-content {
 
 @media (max-width: 768px) {
   .main-content {
-    padding-top: 180px; /* More padding for mobile navbar (icons + menu + auth row) */
+    padding-top: 0; /* No padding needed since navbar is not fixed on mobile */
   }
   
   body.has-offer-banner .main-content {
-    padding-top: calc(var(--offer-banner-height, 50px) + 180px); /* Account for offer banner + mobile navbar (180px) */
+    padding-top: 0; /* No padding needed since navbar is not fixed on mobile */
   }
 }
 
 @media (max-width: 480px) {
   .main-content {
-    padding-top: 170px; /* Adjusted padding for smaller mobile screens */
+    padding-top: 0; /* No padding needed since navbar is not fixed on mobile */
   }
   
   body.has-offer-banner .main-content {
-    padding-top: calc(var(--offer-banner-height, 45px) + 170px); /* Account for offer banner + mobile navbar (170px) */
+    padding-top: 0; /* No padding needed since navbar is not fixed on mobile */
   }
 }
 

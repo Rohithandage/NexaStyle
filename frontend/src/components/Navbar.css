@@ -822,7 +822,15 @@ body.has-offer-banner .navbar {
   }
 
   .navbar {
+    position: relative;
     margin-bottom: 1rem;
+    top: 0 !important; /* Override fixed positioning on mobile */
+  }
+  
+  /* Account for offer banner on mobile - add margin-top to push entire navbar down */
+  body.has-offer-banner .navbar {
+    top: 0 !important;
+    margin-top: var(--offer-banner-height, 60px);
   }
 
   .navbar-logo {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { FiShoppingCart, FiUser, FiChevronDown, FiSearch } from 'react-icons/fi';
@@ -66,7 +66,9 @@ const Navbar = () => {
   useEffect(() => {
     fetchCategories();
     fetchLogo();
-    fetchCartCount();
+    if (isAuthenticated) {
+      fetchCartCount();
+    }
     fetchCurrencies();
     // Check if user's country is supported or if currency is manually selected
     const manuallySelectedCurrency = localStorage.getItem('selectedCurrency');
@@ -83,14 +85,16 @@ const Navbar = () => {
   // Listen for cart update events
   useEffect(() => {
     const handleCartUpdate = () => {
-      fetchCartCount();
+      if (isAuthenticated) {
+        fetchCartCount();
+      }
     };
 
     window.addEventListener('cartUpdated', handleCartUpdate);
     return () => {
       window.removeEventListener('cartUpdated', handleCartUpdate);
     };
-  }, []);
+  }, [isAuthenticated]);
 
   // Sync search input with URL search parameter
   useEffect(() => {
@@ -106,6 +110,8 @@ const Navbar = () => {
   React.useEffect(() => {
     if (isAuthenticated) {
       fetchCartCount();
+    } else {
+      setCartCount(0);
     }
   }, [isAuthenticated]);
 
@@ -173,7 +179,13 @@ const Navbar = () => {
     }
   };
 
-  const fetchCartCount = async () => {
+  const fetchCartCount = useCallback(async () => {
+    // Only fetch cart if user is authenticated
+    if (!isAuthenticated) {
+      setCartCount(0);
+      return;
+    }
+    
     try {
       const res = await api.get('/api/cart', {
         headers: {
@@ -185,9 +197,14 @@ const Navbar = () => {
         setCartCount(count);
       }
     } catch (error) {
-      console.error('Error fetching cart:', error);
+      // Silently handle 401 errors (user not authenticated)
+      if (error.response?.status === 401) {
+        setCartCount(0);
+      } else {
+        console.error('Error fetching cart:', error);
+      }
     }
-  };
+  }, [isAuthenticated]);
 
   const fetchCurrencies = async () => {
     try {

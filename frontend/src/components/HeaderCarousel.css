@@ -234,7 +234,12 @@
 
 @media (max-width: 768px) {
   .header-carousel {
-    margin-top: 1.5rem; /* Add more space between navbar and carousel on mobile */
+    margin-top: 0; /* No extra margin - navbar already accounts for spacing */
+  }
+  
+  /* When offer banner is visible, ensure carousel starts right after navbar */
+  body.has-offer-banner .header-carousel {
+    margin-top: 0;
   }
 
   .hero-wrapper {
