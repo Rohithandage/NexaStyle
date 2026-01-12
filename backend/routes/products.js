@@ -9,26 +9,155 @@ const { auth } = require('../middleware/auth');
 router.get('/', async (req, res) => {
   try {
     const { category, subcategory, page = 1, limit = 12, trending, search, productIds } = req.query;
-    const query = { isActive: true };
+    
+    // Log all incoming requests for debugging
+    console.log(`\n[PRODUCT API] Request received:`, {
+      category,
+      subcategory,
+      page,
+      limit,
+      trending,
+      search: search ? 'yes' : 'no',
+      productIds: productIds ? 'yes' : 'no'
+    });
+    const baseQuery = { isActive: true };
     
     // Filter by product IDs (for carousel items)
     if (productIds) {
       const ids = productIds.split(',').map(id => id.trim()).filter(id => id);
       if (ids.length > 0) {
-        query._id = { $in: ids };
+        baseQuery._id = { $in: ids };
       }
     }
     
-    if (category) query.category = category;
+    // Build the main query
+    let query = { ...baseQuery };
     
     // Ensure exact match for subcategory
     if (subcategory) {
       const subcategorySlug = subcategory.trim();
       // Use exact match - this ensures only products with this exact subcategory slug are returned
-      query.subcategory = subcategorySlug;
+      // Also include products where this category/subcategory appears in alsoInCategories
+      if (category) {
+        // Check if category is active
+        const categoryDoc = await Category.findOne({ name: category });
+        if (categoryDoc && categoryDoc.isActive === false) {
+          // Category is disabled, return empty results
+          query = { _id: { $in: [] } }; // Empty query
+        } else {
+          // Match products where:
+          // 1. Primary category and subcategory match, OR
+          // 2. The category/subcategory appears in alsoInCategories
+          // Build conditions properly - ensure baseQuery conditions are included
+          const condition1 = {
+            isActive: true,
+            category: category,
+            subcategory: subcategorySlug
+          };
+          const condition2 = {
+            isActive: true,
+            'alsoInCategories': {
+              $elemMatch: {
+                category: category,
+                subcategory: subcategorySlug
+              }
+            }
+          };
+          
+          // Add productIds filter if present
+          if (baseQuery._id) {
+            condition1._id = baseQuery._id;
+            condition2._id = baseQuery._id;
+          }
+          
+          query = { $or: [condition1, condition2] };
+        }
+      } else {
+        Object.assign(query, baseQuery);
+        query.subcategory = subcategorySlug;
+      }
+    } else if (category) {
+      // Check if category is active
+      const categoryDoc = await Category.findOne({ name: category });
+      if (categoryDoc && categoryDoc.isActive === false) {
+        // Category is disabled, return empty results
+        query = { _id: { $in: [] } }; // Empty query
+      } else {
+        // When only category is provided, include products from alsoInCategories
+        const condition1 = {
+          isActive: true,
+          category: category
+        };
+        const condition2 = {
+          isActive: true,
+          'alsoInCategories': {
+            $elemMatch: {
+              category: category
+            }
+          }
+        };
+        
+        // Add productIds filter if present
+        if (baseQuery._id) {
+          condition1._id = baseQuery._id;
+          condition2._id = baseQuery._id;
+        }
+        
+        query = { $or: [condition1, condition2] };
+      }
+    } else {
+      // No category/subcategory filter, just use base query
+      query = baseQuery;
     }
     
-    if (trending === 'true') query.isTrending = true;
+    // Add trending filter if needed
+    if (trending === 'true') {
+      if (query.$or) {
+        // Add isTrending to each condition in $or
+        query.$or = query.$or.map(condition => ({
+          ...condition,
+          isTrending: true
+        }));
+      } else {
+        query.isTrending = true;
+      }
+    }
+    
+    // Debug logging for alsoInCategories queries
+    if (category && subcategory) {
+      console.log(`\n[PRODUCT QUERY] ==========================================`);
+      console.log(`[PRODUCT QUERY] Category: ${category}, Subcategory: ${subcategory}`);
+      console.log(`[PRODUCT QUERY] Query structure:`, JSON.stringify(query, null, 2));
+      
+      // Test the query to see what products match
+      const testProducts = await Product.find(query).limit(10);
+      console.log(`[PRODUCT QUERY] Found ${testProducts.length} products (test query)`);
+      testProducts.forEach((p, idx) => {
+        console.log(`[PRODUCT QUERY] Product ${idx + 1}: ${p.name}`);
+        console.log(`[PRODUCT QUERY]   - ID: ${p._id}`);
+        console.log(`[PRODUCT QUERY]   - Category: ${p.category}, Subcategory: ${p.subcategory}`);
+        console.log(`[PRODUCT QUERY]   - alsoInCategories:`, JSON.stringify(p.alsoInCategories, null, 2));
+        console.log(`[PRODUCT QUERY]   - isActive: ${p.isActive}`);
+      });
+      
+      // Also test just the alsoInCategories part
+      const alsoInQuery = {
+        isActive: true,
+        'alsoInCategories': {
+          $elemMatch: {
+            category: category,
+            subcategory: subcategory
+          }
+        }
+      };
+      const alsoInProducts = await Product.find(alsoInQuery).limit(5);
+      console.log(`[PRODUCT QUERY] Products with alsoInCategories match: ${alsoInProducts.length}`);
+      alsoInProducts.forEach((p, idx) => {
+        console.log(`[PRODUCT QUERY]   AlsoIn Product ${idx + 1}: ${p.name} (${p.category} - ${p.subcategory})`);
+      });
+      
+      console.log(`[PRODUCT QUERY] ==========================================\n`);
+    }
     
     // Add search functionality - search across multiple fields including colors and price
     if (search) {
@@ -494,13 +623,41 @@ router.get('/', async (req, res) => {
       }
     } else {
       // Normal query without search - use standard sorting
+      // Execute query and log results
+      if (category && subcategory) {
+        console.log(`[PRODUCT QUERY] Executing query for ${category} - ${subcategory}`);
+        console.log(`[PRODUCT QUERY] Query:`, JSON.stringify(query, null, 2));
+      }
+      
       products = await Product.find(query)
         .limit(limit * 1)
         .skip((page - 1) * limit)
         .sort(trending === 'true' ? { createdAt: -1 } : { createdAt: -1 });
+      
+      // Debug logging after query execution
+      if (category && subcategory) {
+        console.log(`[PRODUCT QUERY RESULT] After query execution:`);
+        console.log(`[PRODUCT QUERY RESULT] Found ${products.length} products after pagination`);
+        products.forEach((p, idx) => {
+          const fromAlsoIn = p.alsoInCategories && p.alsoInCategories.some(item => 
+            item.category === category && item.subcategory === subcategory
+          );
+          console.log(`[PRODUCT QUERY RESULT] Product ${idx + 1}: ${p.name}`);
+          console.log(`[PRODUCT QUERY RESULT]   - Primary: ${p.category} - ${p.subcategory}`);
+          console.log(`[PRODUCT QUERY RESULT]   - From alsoInCategories: ${fromAlsoIn ? 'YES' : 'NO'}`);
+          if (p.alsoInCategories && p.alsoInCategories.length > 0) {
+            console.log(`[PRODUCT QUERY RESULT]   - alsoInCategories:`, JSON.stringify(p.alsoInCategories, null, 2));
+          }
+        });
+      }
     }
 
     const total = await Product.countDocuments(query);
+    
+    // Debug total count
+    if (category && subcategory) {
+      console.log(`[PRODUCT QUERY RESULT] Total count: ${total}`);
+    }
     const actualProducts = hasExactMatches ? products : (fallbackProducts.length > 0 ? fallbackProducts : products);
 
     // Check for active offers (bundle and carousel) that include these products
@@ -556,6 +713,21 @@ router.get('/', async (req, res) => {
       }
     }
 
+    // Add debug info for alsoInCategories queries
+    const debugInfo = {};
+    if (category && subcategory) {
+      debugInfo.queryUsed = query;
+      debugInfo.productsFound = actualProducts.length;
+      debugInfo.totalCount = total;
+      // Count products from alsoInCategories
+      const fromAlsoIn = actualProducts.filter(p => {
+        return p.alsoInCategories && p.alsoInCategories.some(item => 
+          item.category === category && item.subcategory === subcategory
+        );
+      });
+      debugInfo.productsFromAlsoInCategories = fromAlsoIn.length;
+    }
+    
     res.json({
       products: actualProducts,
       totalPages: Math.ceil(total / limit),
@@ -563,7 +735,8 @@ router.get('/', async (req, res) => {
       total: hasExactMatches ? total : actualProducts.length,
       suggestedQuery: suggestedQuery, // "Did you mean" suggestion
       hasExactMatches: hasExactMatches, // Whether exact matches were found
-      isFallback: !hasExactMatches && fallbackProducts.length > 0 // Whether showing fallback results
+      isFallback: !hasExactMatches && fallbackProducts.length > 0, // Whether showing fallback results
+      debug: Object.keys(debugInfo).length > 0 ? debugInfo : undefined
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -624,11 +797,75 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Get categories with subcategories
+// Test endpoint to verify alsoInCategories query - call from browser
+router.get('/test-query', async (req, res) => {
+  try {
+    const { category = 'Men', subcategory = 'hip-hop---over-sized-t-shirts-(180gsm)' } = req.query;
+    
+    // Test the exact query we use
+    const query = {
+      $or: [
+        {
+          isActive: true,
+          category: category,
+          subcategory: subcategory
+        },
+        {
+          isActive: true,
+          'alsoInCategories': {
+            $elemMatch: {
+              category: category,
+              subcategory: subcategory
+            }
+          }
+        }
+      ]
+    };
+    
+    const products = await Product.find(query).limit(20);
+    
+    // Also check all products with alsoInCategories
+    const allWithAlsoIn = await Product.find({
+      isActive: true,
+      'alsoInCategories': { $exists: true, $ne: [] }
+    }).limit(10);
+    
+    res.json({
+      testQuery: query,
+      category,
+      subcategory,
+      productsFound: products.length,
+      products: products.map(p => ({
+        id: p._id,
+        name: p.name,
+        category: p.category,
+        subcategory: p.subcategory,
+        isActive: p.isActive,
+        alsoInCategories: p.alsoInCategories
+      })),
+      allProductsWithAlsoIn: allWithAlsoIn.map(p => ({
+        id: p._id,
+        name: p.name,
+        category: p.category,
+        subcategory: p.subcategory,
+        alsoInCategories: p.alsoInCategories
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get categories with subcategories (only active categories)
 router.get('/categories/all', async (req, res) => {
   try {
-    const categories = await Category.find();
-    res.json(categories);
+    const categories = await Category.find({ isActive: { $ne: false } });
+    // Also filter out inactive subcategories
+    const filteredCategories = categories.map(category => ({
+      ...category.toObject(),
+      subcategories: category.subcategories.filter(sub => sub.isActive !== false)
+    }));
+    res.json(filteredCategories);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }

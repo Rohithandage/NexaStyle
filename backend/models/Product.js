@@ -25,13 +25,21 @@ const productSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  alsoInCategories: [{
+    category: {
+      type: String,
+      enum: ['Men', 'Women', 'Kids']
+    },
+    subcategory: {
+      type: String
+    }
+  }],
   images: [{
     type: String
   }],
   sizes: [{
     size: {
       type: String,
-      enum: ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', '6XL', '7XL'],
       required: true
     },
     price: {
@@ -65,7 +73,6 @@ const productSchema = new mongoose.Schema({
     sizes: [{
       size: {
         type: String,
-        enum: ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', '6XL', '7XL'],
         required: true
       },
       price: {

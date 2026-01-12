@@ -24,6 +24,7 @@ const Footer = () => {
   const location = useLocation();
   const { isAuthenticated } = useAuth();
   const [cartCount, setCartCount] = useState(0);
+  const [categories, setCategories] = useState([]);
   const [isHeaderVisible, setIsHeaderVisible] = useState(() => {
     // On mobile, navbar is visible initially, so bottom nav should be hidden
     // On desktop, always hide bottom nav (it's not shown anyway)
@@ -123,6 +124,19 @@ const Footer = () => {
       setCartCount(0);
     }
   }, [isAuthenticated, fetchCartCount]);
+
+  // Fetch categories to check if Kids category is active
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await api.get('/api/products/categories/all');
+        setCategories(res.data || []);
+      } catch (error) {
+        console.error('Error fetching categories:', error);
+      }
+    };
+    fetchCategories();
+  }, []);
 
   // Listen for cart update events
   useEffect(() => {
@@ -262,14 +276,16 @@ const Footer = () => {
           <IoWomanOutline className="category-icon" />
           <span>Women</span>
         </Link>
-        <Link 
-          to="/products/Kids" 
-          className={`mobile-nav-item ${isActive('/products/Kids') ? 'active' : ''}`} 
-          aria-label="Kids"
-        >
-          <HiEmojiHappy className="category-icon" />
-          <span>Kids</span>
-        </Link>
+        {categories.some(cat => cat.name === 'Kids' && cat.isActive !== false) && (
+          <Link 
+            to="/products/Kids" 
+            className={`mobile-nav-item ${isActive('/products/Kids') ? 'active' : ''}`} 
+            aria-label="Kids"
+          >
+            <HiEmojiHappy className="category-icon" />
+            <span>Kids</span>
+          </Link>
+        )}
         <Link 
           to="/cart" 
           className={`mobile-nav-item ${isActive('/cart') ? 'active' : ''}`} 

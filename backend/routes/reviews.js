@@ -22,7 +22,7 @@ router.get('/product/:productId', async (req, res) => {
       isDisabled: false // Only show non-disabled reviews
     })
     .populate('user', 'name avatar')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 }); // Sort by date - latest first (newest at top)
     
     res.json(reviews);
   } catch (error) {
@@ -143,7 +143,7 @@ router.get('/admin/pending', auth, admin, async (req, res) => {
     const reviews = await Review.find({ isApproved: false })
       .populate('user', 'name email')
       .populate('product', 'name')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }); // Sort by date - latest first (newest at top)
     
     res.json(reviews);
   } catch (error) {
@@ -157,7 +157,7 @@ router.get('/admin/all', auth, admin, async (req, res) => {
     const reviews = await Review.find({})
       .populate('user', 'name email')
       .populate('product', 'name')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }); // Sort by date - latest first (newest at top)
     
     res.json(reviews);
   } catch (error) {
@@ -200,6 +200,45 @@ router.put('/toggle/:id', auth, admin, async (req, res) => {
     res.json(review);
   } catch (error) {
     console.error('Error toggling review:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Delete review (Admin only)
+router.delete('/:id', auth, admin, async (req, res) => {
+  try {
+    const review = await Review.findById(req.params.id);
+    if (!review) {
+      return res.status(404).json({ message: 'Review not found' });
+    }
+
+    const productId = review.product;
+    await Review.findByIdAndDelete(req.params.id);
+
+    // Update product rating after deletion
+    const product = await Product.findById(productId);
+    if (product) {
+      const allReviews = await Review.find({ 
+        product: productId,
+        isApproved: true,
+        isDisabled: false
+      });
+      
+      if (allReviews.length > 0) {
+        const avgRating = allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length;
+        product.rating = Math.round(avgRating * 10) / 10;
+        product.numReviews = allReviews.length;
+      } else {
+        product.rating = 0;
+        product.numReviews = 0;
+      }
+      
+      await product.save();
+    }
+
+    res.json({ message: 'Review deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting review:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

@@ -559,56 +559,26 @@ const ProductDetail = () => {
                   finalPrice = calculatePriceWithCoupon(finalPrice);
                 }
                 
-                // Format prices with currency
+                // Format price with currency
                 const formattedFinalPrice = formatPrice(finalPrice, currency);
-                const formattedOriginalPrice = formatPrice(originalPrice, currency);
                 
-                // Always show both original price (with strikethrough) and discount price when discount exists
-                if (displayDiscountPrice && displayDiscountPrice > 0) {
-                  const discountPercent = displayDiscountPrice < originalPrice 
-                    ? Math.round(((originalPrice - displayDiscountPrice) / originalPrice) * 100) 
-                    : 0;
-                  
-                  const couponDiscountText = appliedCoupon 
-                    ? (appliedCoupon.discountType === 'percentage' 
-                        ? `${appliedCoupon.discount}%` 
-                        : formatPrice(appliedCoupon.discount, currency))
-                    : '';
-                  
-                  return (
-                    <>
-                      <span className="discount-price">{formattedFinalPrice}</span>
-                      <span className="original-price">{formattedOriginalPrice}</span>
-                      {discountPercent > 0 && (
-                        <span className="discount-percent">
-                          {discountPercent}% OFF
-                        </span>
-                      )}
-                      {appliedCoupon && (
-                        <span className="coupon-applied-badge">
-                          + {couponDiscountText} OFF (Coupon)
-                        </span>
-                      )}
-                    </>
-                  );
-                } else {
-                  const couponDiscountText = appliedCoupon 
-                    ? (appliedCoupon.discountType === 'percentage' 
-                        ? `${appliedCoupon.discount}%` 
-                        : formatPrice(appliedCoupon.discount, currency))
-                    : '';
-                  
-                  return (
-                    <>
-                      <span className="price">{formattedFinalPrice}</span>
-                      {appliedCoupon && (
-                        <span className="coupon-applied-badge">
-                          {couponDiscountText} OFF (Coupon)
-                        </span>
-                      )}
-                    </>
-                  );
-                }
+                // Show only discount price (or regular price if no discount)
+                const couponDiscountText = appliedCoupon 
+                  ? (appliedCoupon.discountType === 'percentage' 
+                      ? `${appliedCoupon.discount}%` 
+                      : formatPrice(appliedCoupon.discount, currency))
+                  : '';
+                
+                return (
+                  <>
+                    <span className="discount-price">{formattedFinalPrice}</span>
+                    {appliedCoupon && (
+                      <span className="coupon-applied-badge">
+                        + {couponDiscountText} OFF (Coupon)
+                      </span>
+                    )}
+                  </>
+                );
               })()}
             </div>
           </div>

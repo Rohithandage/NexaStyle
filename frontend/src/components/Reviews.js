@@ -137,12 +137,14 @@ const Reviews = ({ productId }) => {
         ) : (
           <>
             {(() => {
-              // Sort reviews by rating (highest first), then by date (newest first)
+              // Sort reviews by date - latest first (newest at top), then by rating (highest first)
               const sortedReviews = [...reviews].sort((a, b) => {
-                if (b.rating !== a.rating) {
-                  return b.rating - a.rating; // Higher rating first
+                const dateA = new Date(a.createdAt);
+                const dateB = new Date(b.createdAt);
+                if (dateB.getTime() !== dateA.getTime()) {
+                  return dateB.getTime() - dateA.getTime(); // Latest first (newest at top)
                 }
-                return new Date(b.createdAt) - new Date(a.createdAt); // Newer first if same rating
+                return b.rating - a.rating; // Higher rating first if same date
               });
 
               // Show only top 2 reviews initially, or all if showAllReviews is true

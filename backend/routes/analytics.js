@@ -2,8 +2,154 @@ const express = require('express');
 const router = express.Router();
 const Analytics = require('../models/Analytics');
 const Order = require('../models/Order');
+const CountryCurrency = require('../models/CountryCurrency');
 const { auth, admin } = require('../middleware/auth');
 const axios = require('axios');
+
+// Helper function to get currency for a country (fallback when not in database)
+function getCurrencyForCountry(country, countryCode) {
+  if (!country) return { currency: 'USD', currencySymbol: '$', countryCode: null };
+  
+  const countryUpper = country.toUpperCase().trim();
+  const codeUpper = (countryCode || '').toUpperCase().trim();
+  
+  // Comprehensive country to currency mapping
+  const countryCurrencyMap = {
+    // By country name
+    'UNITED STATES': { currency: 'USD', currencySymbol: '$' },
+    'USA': { currency: 'USD', currencySymbol: '$' },
+    'US': { currency: 'USD', currencySymbol: '$' },
+    'UNITED KINGDOM': { currency: 'GBP', currencySymbol: '£' },
+    'UK': { currency: 'GBP', currencySymbol: '£' },
+    'CANADA': { currency: 'CAD', currencySymbol: 'C$' },
+    'AUSTRALIA': { currency: 'AUD', currencySymbol: 'A$' },
+    'INDIA': { currency: 'INR', currencySymbol: '₹' },
+    'GERMANY': { currency: 'EUR', currencySymbol: '€' },
+    'FRANCE': { currency: 'EUR', currencySymbol: '€' },
+    'ITALY': { currency: 'EUR', currencySymbol: '€' },
+    'SPAIN': { currency: 'EUR', currencySymbol: '€' },
+    'NETHERLANDS': { currency: 'EUR', currencySymbol: '€' },
+    'BELGIUM': { currency: 'EUR', currencySymbol: '€' },
+    'AUSTRIA': { currency: 'EUR', currencySymbol: '€' },
+    'PORTUGAL': { currency: 'EUR', currencySymbol: '€' },
+    'IRELAND': { currency: 'EUR', currencySymbol: '€' },
+    'FINLAND': { currency: 'EUR', currencySymbol: '€' },
+    'GREECE': { currency: 'EUR', currencySymbol: '€' },
+    'POLAND': { currency: 'PLN', currencySymbol: 'zł' },
+    'SWEDEN': { currency: 'SEK', currencySymbol: 'kr' },
+    'NORWAY': { currency: 'NOK', currencySymbol: 'kr' },
+    'DENMARK': { currency: 'DKK', currencySymbol: 'kr' },
+    'SWITZERLAND': { currency: 'CHF', currencySymbol: 'CHF' },
+    'JAPAN': { currency: 'JPY', currencySymbol: '¥' },
+    'CHINA': { currency: 'CNY', currencySymbol: '¥' },
+    'SOUTH KOREA': { currency: 'KRW', currencySymbol: '₩' },
+    'SINGAPORE': { currency: 'SGD', currencySymbol: 'S$' },
+    'MALAYSIA': { currency: 'MYR', currencySymbol: 'RM' },
+    'THAILAND': { currency: 'THB', currencySymbol: '฿' },
+    'INDONESIA': { currency: 'IDR', currencySymbol: 'Rp' },
+    'PHILIPPINES': { currency: 'PHP', currencySymbol: '₱' },
+    'VIETNAM': { currency: 'VND', currencySymbol: '₫' },
+    'NEW ZEALAND': { currency: 'NZD', currencySymbol: 'NZ$' },
+    'BRAZIL': { currency: 'BRL', currencySymbol: 'R$' },
+    'MEXICO': { currency: 'MXN', currencySymbol: '$' },
+    'ARGENTINA': { currency: 'ARS', currencySymbol: '$' },
+    'CHILE': { currency: 'CLP', currencySymbol: '$' },
+    'COLOMBIA': { currency: 'COP', currencySymbol: '$' },
+    'PERU': { currency: 'PEN', currencySymbol: 'S/' },
+    'SOUTH AFRICA': { currency: 'ZAR', currencySymbol: 'R' },
+    'EGYPT': { currency: 'EGP', currencySymbol: 'E£' },
+    'NIGERIA': { currency: 'NGN', currencySymbol: '₦' },
+    'KENYA': { currency: 'KES', currencySymbol: 'KSh' },
+    'RUSSIA': { currency: 'RUB', currencySymbol: '₽' },
+    'TURKEY': { currency: 'TRY', currencySymbol: '₺' },
+    'SAUDI ARABIA': { currency: 'SAR', currencySymbol: '﷼' },
+    'UNITED ARAB EMIRATES': { currency: 'AED', currencySymbol: 'د.إ' },
+    'UAE': { currency: 'AED', currencySymbol: 'د.إ' },
+    'ISRAEL': { currency: 'ILS', currencySymbol: '₪' },
+    'HONG KONG': { currency: 'HKD', currencySymbol: 'HK$' },
+    'TAIWAN': { currency: 'TWD', currencySymbol: 'NT$' },
+    'CZECH REPUBLIC': { currency: 'CZK', currencySymbol: 'Kč' },
+    'HUNGARY': { currency: 'HUF', currencySymbol: 'Ft' },
+    'ROMANIA': { currency: 'RON', currencySymbol: 'lei' },
+    'BULGARIA': { currency: 'BGN', currencySymbol: 'лв' },
+  };
+  
+  // By country code
+  const codeCurrencyMap = {
+    'US': { currency: 'USD', currencySymbol: '$' },
+    'GB': { currency: 'GBP', currencySymbol: '£' },
+    'CA': { currency: 'CAD', currencySymbol: 'C$' },
+    'AU': { currency: 'AUD', currencySymbol: 'A$' },
+    'IN': { currency: 'INR', currencySymbol: '₹' },
+    'DE': { currency: 'EUR', currencySymbol: '€' },
+    'FR': { currency: 'EUR', currencySymbol: '€' },
+    'IT': { currency: 'EUR', currencySymbol: '€' },
+    'ES': { currency: 'EUR', currencySymbol: '€' },
+    'NL': { currency: 'EUR', currencySymbol: '€' },
+    'BE': { currency: 'EUR', currencySymbol: '€' },
+    'AT': { currency: 'EUR', currencySymbol: '€' },
+    'PT': { currency: 'EUR', currencySymbol: '€' },
+    'IE': { currency: 'EUR', currencySymbol: '€' },
+    'FI': { currency: 'EUR', currencySymbol: '€' },
+    'GR': { currency: 'EUR', currencySymbol: '€' },
+    'PL': { currency: 'PLN', currencySymbol: 'zł' },
+    'SE': { currency: 'SEK', currencySymbol: 'kr' },
+    'NO': { currency: 'NOK', currencySymbol: 'kr' },
+    'DK': { currency: 'DKK', currencySymbol: 'kr' },
+    'CH': { currency: 'CHF', currencySymbol: 'CHF' },
+    'JP': { currency: 'JPY', currencySymbol: '¥' },
+    'CN': { currency: 'CNY', currencySymbol: '¥' },
+    'KR': { currency: 'KRW', currencySymbol: '₩' },
+    'SG': { currency: 'SGD', currencySymbol: 'S$' },
+    'MY': { currency: 'MYR', currencySymbol: 'RM' },
+    'TH': { currency: 'THB', currencySymbol: '฿' },
+    'ID': { currency: 'IDR', currencySymbol: 'Rp' },
+    'PH': { currency: 'PHP', currencySymbol: '₱' },
+    'VN': { currency: 'VND', currencySymbol: '₫' },
+    'NZ': { currency: 'NZD', currencySymbol: 'NZ$' },
+    'BR': { currency: 'BRL', currencySymbol: 'R$' },
+    'MX': { currency: 'MXN', currencySymbol: '$' },
+    'AR': { currency: 'ARS', currencySymbol: '$' },
+    'CL': { currency: 'CLP', currencySymbol: '$' },
+    'CO': { currency: 'COP', currencySymbol: '$' },
+    'PE': { currency: 'PEN', currencySymbol: 'S/' },
+    'ZA': { currency: 'ZAR', currencySymbol: 'R' },
+    'EG': { currency: 'EGP', currencySymbol: 'E£' },
+    'NG': { currency: 'NGN', currencySymbol: '₦' },
+    'KE': { currency: 'KES', currencySymbol: 'KSh' },
+    'RU': { currency: 'RUB', currencySymbol: '₽' },
+    'TR': { currency: 'TRY', currencySymbol: '₺' },
+    'SA': { currency: 'SAR', currencySymbol: '﷼' },
+    'AE': { currency: 'AED', currencySymbol: 'د.إ' },
+    'IL': { currency: 'ILS', currencySymbol: '₪' },
+    'HK': { currency: 'HKD', currencySymbol: 'HK$' },
+    'TW': { currency: 'TWD', currencySymbol: 'NT$' },
+    'CZ': { currency: 'CZK', currencySymbol: 'Kč' },
+    'HU': { currency: 'HUF', currencySymbol: 'Ft' },
+    'RO': { currency: 'RON', currencySymbol: 'lei' },
+    'BG': { currency: 'BGN', currencySymbol: 'лв' },
+  };
+  
+  // Try country code first (most reliable)
+  if (codeUpper && codeCurrencyMap[codeUpper]) {
+    return { ...codeCurrencyMap[codeUpper], countryCode: codeUpper };
+  }
+  
+  // Try exact country name match
+  if (countryCurrencyMap[countryUpper]) {
+    return { ...countryCurrencyMap[countryUpper], countryCode: codeUpper || null };
+  }
+  
+  // Try partial match (e.g., "United States" contains "United States")
+  for (const [key, value] of Object.entries(countryCurrencyMap)) {
+    if (countryUpper.includes(key) || key.includes(countryUpper)) {
+      return { ...value, countryCode: codeUpper || null };
+    }
+  }
+  
+  // Default to USD
+  return { currency: 'USD', currencySymbol: '$', countryCode: codeUpper || null };
+}
 
 // Helper function to normalize country names (merge duplicates)
 function normalizeCountryName(country) {
@@ -636,8 +782,102 @@ router.get('/dashboard', auth, admin, async (req, res) => {
       }
     });
 
+    // Fetch country currencies to match with country stats
+    let countryCurrencies = [];
+    try {
+      countryCurrencies = await CountryCurrency.find({ isActive: { $ne: false } });
+    } catch (error) {
+      console.error('Error fetching country currencies:', error);
+    }
+
+    // Create maps for quick lookup: country code, country name -> currency info
+    const countryCurrencyMapByName = {};
+    const countryCurrencyMapByCode = {};
+    
+    countryCurrencies.forEach(cc => {
+      const currencyInfo = {
+        currency: cc.currency,
+        currencySymbol: cc.currencySymbol,
+        countryCode: cc.countryCode
+      };
+      
+      // Store by normalized country name
+      const normalizedName = normalizeCountryName(cc.country);
+      countryCurrencyMapByName[normalizedName] = currencyInfo;
+      // Also store by original country name for exact matches
+      countryCurrencyMapByName[cc.country] = currencyInfo;
+      
+      // Store by country code (most reliable)
+      if (cc.countryCode && cc.countryCode !== 'XX') {
+        countryCurrencyMapByCode[cc.countryCode.toUpperCase()] = currencyInfo;
+      }
+    });
+
+    // Add currency information to country stats with improved matching
+    Object.keys(countryStats).forEach(country => {
+      const countryStat = countryStats[country];
+      let currencyInfo = null;
+      
+      // Priority 1: Match by country code (most reliable)
+      if (countryStat.countryCode && countryStat.countryCode !== 'XX') {
+        currencyInfo = countryCurrencyMapByCode[countryStat.countryCode.toUpperCase()];
+      }
+      
+      // Priority 2: Match by normalized country name
+      if (!currencyInfo) {
+        const normalizedName = normalizeCountryName(country);
+        currencyInfo = countryCurrencyMapByName[normalizedName] || countryCurrencyMapByName[country];
+      }
+      
+      if (currencyInfo) {
+        // Use currency from database (admin configured)
+        countryStat.currency = currencyInfo.currency;
+        countryStat.currencySymbol = currencyInfo.currencySymbol;
+        // Update country code if we have it from currency data
+        if (countryStat.countryCode === 'XX' && currencyInfo.countryCode) {
+          countryStat.countryCode = currencyInfo.countryCode;
+        }
+      } else {
+        // Priority 3: Fallback to country-to-currency mapping if not in database
+        const fallbackCurrency = getCurrencyForCountry(country, countryStat.countryCode);
+        countryStat.currency = fallbackCurrency.currency;
+        countryStat.currencySymbol = fallbackCurrency.currencySymbol;
+        
+        // If we got a country code from the fallback, update it
+        if (countryStat.countryCode === 'XX' && fallbackCurrency.countryCode) {
+          countryStat.countryCode = fallbackCurrency.countryCode;
+        }
+        
+        // Debug log for currency assignment
+        console.log(`[CURRENCY MATCH] Using fallback: ${country}, Code: ${countryStat.countryCode}, Currency: ${countryStat.currency}, Symbol: ${countryStat.currencySymbol}`);
+      }
+      
+      // Safety check: Ensure currency is always set
+      if (!countryStat.currency) {
+        const fallback = getCurrencyForCountry(country, countryStat.countryCode);
+        countryStat.currency = fallback.currency;
+        countryStat.currencySymbol = fallback.currencySymbol;
+        console.log(`[CURRENCY MATCH] Safety fallback applied: ${country} -> ${countryStat.currency}`);
+      }
+      
+      // Additional debug for Singapore specifically
+      if (country && (country.toUpperCase().includes('SINGAPORE') || countryStat.countryCode === 'SG')) {
+        console.log(`[SINGAPORE DEBUG] Country: ${country}, Code: ${countryStat.countryCode}, Currency: ${countryStat.currency}, Symbol: ${countryStat.currencySymbol}`);
+      }
+    });
+
     // Convert to array and sort by views (primary) then revenue (secondary)
     const countryStatsArray = Object.values(countryStats)
+      .map(country => {
+        // Ensure currency and currencySymbol are always present
+        if (!country.currency || !country.currencySymbol) {
+          const fallback = getCurrencyForCountry(country.country, country.countryCode);
+          country.currency = country.currency || fallback.currency;
+          country.currencySymbol = country.currencySymbol || fallback.currencySymbol;
+          console.log(`[CURRENCY FIX] ${country.country} (${country.countryCode}): ${country.currency} (${country.currencySymbol})`);
+        }
+        return country;
+      })
       .sort((a, b) => {
         // Sort by total engagement: views + orders, then by revenue
         const aEngagement = a.views + a.orders;
@@ -648,7 +888,14 @@ router.get('/dashboard', auth, admin, async (req, res) => {
         return b.revenue - a.revenue;
       });
     
-    console.log('Country stats:', countryStatsArray); // Debug log
+    // Log final country stats with currency info
+    console.log('Country stats with currency:', countryStatsArray.map(c => ({
+      country: c.country,
+      countryCode: c.countryCode,
+      currency: c.currency,
+      currencySymbol: c.currencySymbol,
+      revenue: c.revenue
+    })));
 
     res.json({
       today: {

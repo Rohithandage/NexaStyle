@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import api from '../api/api';
 import { useAuth } from '../hooks/useAuth';
@@ -58,6 +58,7 @@ const Products = () => {
   const [hasCartItems, setHasCartItems] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [searchMetadata, setSearchMetadata] = useState(null);
+  const [offers, setOffers] = useState([]);
 
   useEffect(() => {
     fetchCategories();
@@ -98,6 +99,15 @@ const Products = () => {
   useEffect(() => {
     fetchProducts();
   }, [category, selectedSubcategory, page, searchParams]);
+
+  useEffect(() => {
+    const carouselParam = searchParams.get('carousel');
+    if (carouselParam && carouselParam.trim()) {
+      fetchOffers();
+    } else {
+      setOffers([]);
+    }
+  }, [searchParams]);
 
   const fetchCategories = async () => {
     try {
@@ -147,6 +157,13 @@ const Products = () => {
       setTotalPages(res.data.totalPages || 1);
       setTotalProducts(res.data.total || 0);
       
+      // Debug logging for alsoInCategories
+      if (res.data.debug) {
+        console.log('[PRODUCTS API RESPONSE] Debug info:', res.data.debug);
+        console.log('[PRODUCTS API RESPONSE] Products from alsoInCategories:', res.data.debug.productsFromAlsoInCategories);
+        console.log('[PRODUCTS API RESPONSE] Total products found:', res.data.debug.productsFound);
+      }
+      
       // Store search metadata for display
       if (res.data.suggestedQuery || res.data.isFallback !== undefined) {
         setSearchMetadata({
@@ -178,8 +195,92 @@ const Products = () => {
     }
   };
 
+  const fetchOffers = async () => {
+    try {
+      // Fetch all active offers including bundle/carousel offers
+      const res = await api.get('/api/settings/offers?includeAll=true');
+      setOffers(res.data.offers || []);
+    } catch (error) {
+      console.error('Error fetching offers:', error);
+      // Fallback to regular offers endpoint
+      try {
+        const res = await api.get('/api/settings/offers');
+        setOffers(res.data.offers || []);
+      } catch (fallbackError) {
+        console.error('Error fetching offers (fallback):', fallbackError);
+        setOffers([]);
+      }
+    }
+  };
+
   const currentCategory = categories.find(cat => cat.name === category);
   const subcategories = currentCategory?.subcategories?.filter(sub => sub.isActive) || [];
+
+  // Color gradients for offer cards
+  const offerColors = [
+    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+    'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+    'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+    'linear-gradient(135deg, #30cfd0 0%, #330867 100%)',
+    'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
+    'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)'
+  ];
+
+  const getOfferColor = (index) => {
+    return offerColors[index % offerColors.length];
+  };
+
+  // Filter to get carousel offers that match the current carousel
+  const carouselOffers = useMemo(() => {
+    const carouselParam = searchParams.get('carousel');
+    if (!carouselParam || !carouselParam.trim() || offers.length === 0) {
+      return [];
+    }
+
+    const productIdsFromUrl = carouselParam.split(',').map(id => id.trim()).filter(id => id);
+    
+    return offers.filter(offer => {
+      if (!offer.isActive || offer.offerType !== 'carousel') {
+        return false;
+      }
+      
+      // Check if the carousel's productIds match the URL productIds
+      if (offer.carouselId && offer.carouselId.productIds) {
+        const carouselProductIds = Array.isArray(offer.carouselId.productIds) 
+          ? offer.carouselId.productIds 
+          : [];
+        
+        const carouselProductIdStrings = carouselProductIds.map(pId => {
+          const id = pId._id ? pId._id.toString() : pId.toString();
+          return id;
+        });
+        
+        // Check if all productIds from URL are in the carousel
+        const allMatch = productIdsFromUrl.every(urlId => 
+          carouselProductIdStrings.includes(urlId)
+        );
+        
+        // Also check if the carousel has the same number of products (or more)
+        // This ensures we're showing the offer for the correct carousel
+        if (allMatch && carouselProductIdStrings.length >= productIdsFromUrl.length) {
+          return true;
+        }
+      }
+      
+      // Fallback: check if product is in the offer's products array
+      if (offer.products && Array.isArray(offer.products)) {
+        const offerProductIds = offer.products.map(pId => pId.toString());
+        const allMatch = productIdsFromUrl.every(urlId => 
+          offerProductIds.includes(urlId)
+        );
+        return allMatch && offerProductIds.length >= productIdsFromUrl.length;
+      }
+      
+      return false;
+    });
+  }, [offers, searchParams]);
 
   const handleAddToCart = async (e, product) => {
     e.preventDefault();
@@ -263,6 +364,28 @@ const Products = () => {
     <div className="products-page">
       <div className="products-container">
         <div className="products-content">
+          {/* Carousel Offers Section - Only show when viewing a carousel - Show at top */}
+          {carouselOffers.length > 0 && (
+            <div className="carousel-offers-section">
+              <div className="carousel-offers-container">
+                {carouselOffers.map((offer, index) => (
+                  <div
+                    key={offer._id}
+                    className="carousel-offer-card"
+                    style={{ background: getOfferColor(index) }}
+                  >
+                    <div className="carousel-offer-badge">
+                      <span className="offer-icon">🎁</span>
+                      <span className="carousel-offer-code">{offer.code}</span>
+                    </div>
+                    <div className="carousel-offer-text">
+                      {offer.carouselDisplayText || 'Special Offer'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <h1>
             {searchParams.get('carousel') ? (
               <>

@@ -396,7 +396,9 @@ const Navbar = () => {
           <Link to="/" className="navbar-link">
             Home
           </Link>
-          {categories.map((category) => {
+          {categories
+            .filter(category => category.isActive !== false) // Only show active categories
+            .map((category) => {
             const hasSubcategories = category.subcategories && category.subcategories.filter(sub => sub.isActive).length > 0;
             const isActive = hoveredCategory === category._id || touchedCategory === category._id;
             

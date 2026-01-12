@@ -6,6 +6,8 @@ const Order = require('../models/Order');
 const Settings = require('../models/Settings');
 const Offer = require('../models/Offer');
 const CarouselItem = require('../models/CarouselItem');
+const Review = require('../models/Review');
+const User = require('../models/User');
 const { auth, admin } = require('../middleware/auth');
 const cloudinary = require('cloudinary').v2;
 
@@ -75,6 +77,43 @@ router.get('/categories', async (req, res) => {
     const categories = await Category.find();
     res.json(categories);
   } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Update category (enable/disable)
+router.put('/categories/:categoryId', async (req, res) => {
+  try {
+    console.log('[UPDATE CATEGORY] Request received:', {
+      categoryId: req.params.categoryId,
+      isActive: req.body.isActive,
+      body: req.body
+    });
+    
+    const { isActive } = req.body;
+    const categoryId = req.params.categoryId;
+    
+    // Validate ObjectId format
+    if (!categoryId.match(/^[0-9a-fA-F]{24}$/)) {
+      console.log('[UPDATE CATEGORY] Invalid ID format:', categoryId);
+      return res.status(400).json({ message: 'Invalid category ID format' });
+    }
+    
+    const category = await Category.findByIdAndUpdate(
+      categoryId,
+      { isActive: isActive !== undefined ? isActive : true, updatedAt: new Date() },
+      { new: true }
+    );
+    
+    if (!category) {
+      console.log('[UPDATE CATEGORY] Category not found:', categoryId);
+      return res.status(404).json({ message: 'Category not found' });
+    }
+    
+    console.log('[UPDATE CATEGORY] Success:', category.name, 'isActive:', category.isActive);
+    res.json(category);
+  } catch (error) {
+    console.error('[UPDATE CATEGORY] Error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -195,6 +234,30 @@ router.post('/products', async (req, res) => {
       }
     }
     
+    // Validate and normalize alsoInCategories entries
+    if (req.body.alsoInCategories && Array.isArray(req.body.alsoInCategories)) {
+      const validatedAlsoInCategories = [];
+      for (const item of req.body.alsoInCategories) {
+        if (item && item.category && item.subcategory) {
+          // Validate that the subcategory exists in the target category
+          const targetCategory = await Category.findOne({ name: item.category });
+          if (targetCategory) {
+            const validSubcategory = targetCategory.subcategories.find(
+              sub => sub.slug === item.subcategory.trim() && sub.isActive
+            );
+            if (validSubcategory) {
+              // Use the exact slug from the database
+              validatedAlsoInCategories.push({
+                category: item.category,
+                subcategory: validSubcategory.slug
+              });
+            }
+          }
+        }
+      }
+      req.body.alsoInCategories = validatedAlsoInCategories;
+    }
+    
     const product = new Product(req.body);
     await product.save();
     res.status(201).json(product);
@@ -223,11 +286,52 @@ router.put('/products/:id', async (req, res) => {
       }
     }
     
+    // Ensure alsoInCategories is properly handled (can be empty array)
+    const updateData = { ...req.body, updatedAt: new Date() };
+    console.log(`[UPDATE PRODUCT] Product ID: ${req.params.id}`);
+    console.log(`[UPDATE PRODUCT] Received alsoInCategories:`, JSON.stringify(req.body.alsoInCategories, null, 2));
+    
+    if (updateData.alsoInCategories === undefined) {
+      // If not provided, keep existing value (don't set to empty)
+      delete updateData.alsoInCategories;
+      console.log(`[UPDATE PRODUCT] alsoInCategories not provided, keeping existing value`);
+    } else if (Array.isArray(updateData.alsoInCategories)) {
+      // Validate and normalize alsoInCategories entries
+      const validatedAlsoInCategories = [];
+      for (const item of updateData.alsoInCategories) {
+        if (item && item.category && item.subcategory) {
+          // Validate that the subcategory exists in the target category
+          const targetCategory = await Category.findOne({ name: item.category });
+          if (targetCategory) {
+            const validSubcategory = targetCategory.subcategories.find(
+              sub => sub.slug === item.subcategory.trim() && sub.isActive
+            );
+            if (validSubcategory) {
+              // Use the exact slug from the database
+              validatedAlsoInCategories.push({
+                category: item.category,
+                subcategory: validSubcategory.slug
+              });
+              console.log(`[UPDATE PRODUCT] Validated entry: ${item.category} - ${validSubcategory.slug}`);
+            } else {
+              console.log(`[UPDATE PRODUCT] Subcategory not found or inactive: ${item.category} - ${item.subcategory}`);
+            }
+          } else {
+            console.log(`[UPDATE PRODUCT] Category not found: ${item.category}`);
+          }
+        }
+      }
+      updateData.alsoInCategories = validatedAlsoInCategories;
+      console.log(`[UPDATE PRODUCT] Final validated alsoInCategories:`, JSON.stringify(validatedAlsoInCategories, null, 2));
+    }
+    
     const product = await Product.findByIdAndUpdate(
       req.params.id,
-      { ...req.body, updatedAt: new Date() },
+      updateData,
       { new: true }
     );
+    
+    console.log(`[UPDATE PRODUCT] Saved product alsoInCategories:`, JSON.stringify(product?.alsoInCategories, null, 2));
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
@@ -1202,6 +1306,365 @@ router.delete('/country-currencies/:id', auth, admin, async (req, res) => {
     res.json({ message: 'Country Currency deleted successfully' });
   } catch (error) {
     console.error('Error deleting country currency:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Add demo reviews to all products (Admin only)
+router.post('/reviews/add-demo', async (req, res) => {
+  console.log('[ADD DEMO REVIEWS] Endpoint called');
+  try {
+    // Demo user names and comments pool (mix of international and Indian names)
+    const demoUsers = [
+      // International names
+      { name: 'Alex Johnson', email: 'alex.johnson@demo.com' },
+      { name: 'Sarah Williams', email: 'sarah.williams@demo.com' },
+      { name: 'Michael Brown', email: 'michael.brown@demo.com' },
+      { name: 'Emily Davis', email: 'emily.davis@demo.com' },
+      { name: 'David Miller', email: 'david.miller@demo.com' },
+      { name: 'Jessica Wilson', email: 'jessica.wilson@demo.com' },
+      { name: 'James Moore', email: 'james.moore@demo.com' },
+      { name: 'Olivia Taylor', email: 'olivia.taylor@demo.com' },
+      { name: 'Robert Anderson', email: 'robert.anderson@demo.com' },
+      { name: 'Sophia Thomas', email: 'sophia.thomas@demo.com' },
+      // Indian names
+      { name: 'Rahul Sharma', email: 'rahul.sharma@demo.com' },
+      { name: 'Priya Patel', email: 'priya.patel@demo.com' },
+      { name: 'Amit Kumar', email: 'amit.kumar@demo.com' },
+      { name: 'Anjali Singh', email: 'anjali.singh@demo.com' },
+      { name: 'Vikram Gupta', email: 'vikram.gupta@demo.com' },
+      { name: 'Kavita Reddy', email: 'kavita.reddy@demo.com' },
+      { name: 'Rajesh Mehta', email: 'rajesh.mehta@demo.com' },
+      { name: 'Sneha Desai', email: 'sneha.desai@demo.com' },
+      { name: 'Arjun Joshi', email: 'arjun.joshi@demo.com' },
+      { name: 'Divya Iyer', email: 'divya.iyer@demo.com' },
+      { name: 'Suresh Nair', email: 'suresh.nair@demo.com' },
+      { name: 'Meera Menon', email: 'meera.menon@demo.com' },
+      { name: 'Karan Malhotra', email: 'karan.malhotra@demo.com' },
+      { name: 'Pooja Agarwal', email: 'pooja.agarwal@demo.com' },
+      { name: 'Rohan Kapoor', email: 'rohan.kapoor@demo.com' },
+      { name: 'Neha Choudhury', email: 'neha.choudhury@demo.com' },
+      { name: 'Aditya Verma', email: 'aditya.verma@demo.com' },
+      { name: 'Shreya Banerjee', email: 'shreya.banerjee@demo.com' },
+      { name: 'Vivek Tiwari', email: 'vivek.tiwari@demo.com' },
+      { name: 'Riya Shah', email: 'riya.shah@demo.com' },
+      { name: 'Nikhil Agarwal', email: 'nikhil.agarwal@demo.com' },
+      { name: 'Ananya Rao', email: 'ananya.rao@demo.com' },
+      { name: 'Siddharth Jain', email: 'siddharth.jain@demo.com' },
+      { name: 'Isha Trivedi', email: 'isha.trivedi@demo.com' },
+      { name: 'Manish Pandey', email: 'manish.pandey@demo.com' },
+      { name: 'Swati Mishra', email: 'swati.mishra@demo.com' },
+      { name: 'Harsh Varma', email: 'harsh.varma@demo.com' },
+      { name: 'Tanvi Nanda', email: 'tanvi.nanda@demo.com' }
+    ];
+
+    const reviewComments = [
+      'Great quality! The fabric is soft and comfortable. Highly recommend!',
+      'Love the design and fit. Perfect for everyday wear.',
+      'Excellent product! Fast shipping and great customer service.',
+      'Very satisfied with my purchase. The quality exceeded my expectations.',
+      'Amazing value for money. Will definitely order again!',
+      'Perfect fit and great quality. Very happy with this purchase.',
+      'Beautiful design and comfortable material. Highly recommend!',
+      'Great product! The colors are vibrant and the quality is top-notch.',
+      'Very pleased with this purchase. The sizing was accurate.',
+      'Excellent quality and fast delivery. Will shop here again!',
+      'Love it! The material is soft and the design is stylish.',
+      'Great value! The product looks exactly as described.',
+      'Very comfortable and well-made. Highly satisfied!',
+      'Perfect! The quality is excellent and the fit is just right.',
+      'Amazing product! Fast shipping and great packaging.',
+      'Love the style and quality. Will definitely buy more!',
+      'Excellent purchase! The product exceeded my expectations.',
+      'Great quality fabric and perfect fit. Very happy!',
+      'Beautiful product! The design is modern and stylish.',
+      'Very satisfied! The quality is excellent and delivery was fast.',
+      'Perfect fit and great quality. Highly recommend this product!',
+      'Love it! The material is comfortable and the design is trendy.',
+      'Excellent value for money. Great quality and fast shipping.',
+      'Very pleased with the quality. Will order again soon!',
+      'Amazing product! The colors are vibrant and the fit is perfect.',
+      // Reviews with Indian context/style
+      'Bahut accha product hai! Quality bilkul perfect hai. Highly recommend!',
+      'Superb quality! The fabric is very comfortable for Indian weather.',
+      'Excellent product! Delivery was very fast and packaging was great.',
+      'Perfect fit! The size chart was accurate. Very happy with purchase.',
+      'Great value for money! Quality is much better than expected.',
+      'Love the design! Perfect for Indian festivals and occasions.',
+      'Very good quality material. Comfortable to wear all day.',
+      'Amazing product! The colors are bright and beautiful.',
+      'Excellent purchase! The product looks exactly like the pictures.',
+      'Great quality! Will definitely recommend to friends and family.',
+      'Perfect for daily wear! The fabric is soft and durable.',
+      'Very satisfied with the quality and fast delivery service.',
+      'Love it! The design is modern and suits Indian style perfectly.',
+      'Excellent value! The product quality is outstanding.',
+      'Great product! Fast shipping and excellent customer support.',
+      'Perfect fit and great quality! Very happy with my purchase.',
+      'Amazing quality! The material is premium and comfortable.',
+      'Excellent product! The colors are vibrant and long-lasting.',
+      'Very pleased! The sizing was perfect and quality is top-notch.',
+      'Great purchase! Will definitely order more products from here.'
+    ];
+
+    // Create or get demo users
+    const demoUserIds = [];
+    for (const demoUser of demoUsers) {
+      let user = await User.findOne({ email: demoUser.email });
+      if (!user) {
+        user = new User({
+          name: demoUser.name,
+          email: demoUser.email,
+          password: 'demo123', // Will be hashed by pre-save hook
+          role: 'user'
+        });
+        await user.save();
+      }
+      demoUserIds.push(user._id);
+    }
+
+    // Get all active products
+    const products = await Product.find({ isActive: true });
+    
+    let totalReviewsCreated = 0;
+    const results = [];
+
+    // Track used combinations globally to avoid repetition across products
+    const usedCombinations = new Set(); // Format: "userId-commentIndex"
+    
+    // Create arrays of available indices for better distribution
+    const availableUserIndices = Array.from({ length: demoUserIds.length }, (_, i) => i);
+    const availableCommentIndices = Array.from({ length: reviewComments.length }, (_, i) => i);
+    
+    // Shuffle arrays for random distribution
+    const shuffleArray = (array) => {
+      const shuffled = [...array];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled;
+    };
+    
+    let shuffledUserIndices = shuffleArray(availableUserIndices);
+    let shuffledCommentIndices = shuffleArray(availableCommentIndices);
+    let userIndexPointer = 0;
+    let commentIndexPointer = 0;
+
+    // Calculate total reviews to create for date sequencing
+    let totalReviewsToCreate = 0;
+    for (const product of products) {
+      const numReviews = Math.floor(Math.random() * 3) + 3; // 3-5 reviews per product
+      totalReviewsToCreate += numReviews;
+    }
+
+    // Generate sequential dates from today going backwards (newest to oldest)
+    // This ensures latest reviews appear at top when sorted by createdAt: -1
+    const now = new Date();
+    const daysBack = 30; // Spread reviews over last 30 days
+    const dateIncrement = (daysBack * 24 * 60 * 60 * 1000) / totalReviewsToCreate; // Milliseconds per review
+    let currentDateIndex = 0;
+
+    // For each product, create 3-5 different reviews
+    for (const product of products) {
+      const numReviews = Math.floor(Math.random() * 3) + 3; // 3-5 reviews per product
+      const usedUserIndices = new Set();
+      const usedCommentIndices = new Set();
+      
+      for (let i = 0; i < numReviews; i++) {
+        // Get a unique user (not used for this product yet, and try to avoid repetition across products)
+        let userIndex;
+        let attempts = 0;
+        do {
+          // If we've used all users, reset the shuffled array
+          if (userIndexPointer >= shuffledUserIndices.length) {
+            shuffledUserIndices = shuffleArray(availableUserIndices);
+            userIndexPointer = 0;
+          }
+          userIndex = shuffledUserIndices[userIndexPointer++];
+          attempts++;
+        } while (usedUserIndices.has(userIndex) && attempts < demoUserIds.length * 2);
+        
+        // If still duplicate within product, pick randomly from unused
+        if (usedUserIndices.has(userIndex)) {
+          const unusedUsers = availableUserIndices.filter(idx => !usedUserIndices.has(idx));
+          if (unusedUsers.length > 0) {
+            userIndex = unusedUsers[Math.floor(Math.random() * unusedUsers.length)];
+          }
+        }
+        usedUserIndices.add(userIndex);
+        
+        // Get a unique comment (not used for this product yet, and try to avoid repetition across products)
+        let commentIndex;
+        attempts = 0;
+        do {
+          // If we've used all comments, reset the shuffled array
+          if (commentIndexPointer >= shuffledCommentIndices.length) {
+            shuffledCommentIndices = shuffleArray(availableCommentIndices);
+            commentIndexPointer = 0;
+          }
+          commentIndex = shuffledCommentIndices[commentIndexPointer++];
+          attempts++;
+        } while (usedCommentIndices.has(commentIndex) && attempts < reviewComments.length * 2);
+        
+        // If still duplicate within product, pick randomly from unused
+        if (usedCommentIndices.has(commentIndex)) {
+          const unusedComments = availableCommentIndices.filter(idx => !usedCommentIndices.has(idx));
+          if (unusedComments.length > 0) {
+            commentIndex = unusedComments[Math.floor(Math.random() * unusedComments.length)];
+          }
+        }
+        usedCommentIndices.add(commentIndex);
+        
+        // Check if this exact combination (user-comment) has been used before
+        const combinationKey = `${userIndex}-${commentIndex}`;
+        if (usedCombinations.has(combinationKey)) {
+          // Find an alternative comment that hasn't been used with this user
+          const alternativeComments = availableCommentIndices.filter(
+            idx => !usedCombinations.has(`${userIndex}-${idx}`) && !usedCommentIndices.has(idx)
+          );
+          if (alternativeComments.length > 0) {
+            commentIndex = alternativeComments[Math.floor(Math.random() * alternativeComments.length)];
+          } else {
+            // If no alternative, find alternative user
+            const alternativeUsers = availableUserIndices.filter(
+              idx => !usedCombinations.has(`${idx}-${commentIndex}`) && !usedUserIndices.has(idx)
+            );
+            if (alternativeUsers.length > 0) {
+              userIndex = alternativeUsers[Math.floor(Math.random() * alternativeUsers.length)];
+              usedUserIndices.delete(usedUserIndices.has(userIndex) ? userIndex : null);
+              usedUserIndices.add(userIndex);
+            }
+          }
+        }
+        
+        // Mark this combination as used
+        usedCombinations.add(`${userIndex}-${commentIndex}`);
+        
+        // Random rating (mostly positive, but some variation)
+        const rating = Math.random() < 0.7 ? 
+          Math.floor(Math.random() * 2) + 4 : // 70% chance of 4-5 stars
+          Math.floor(Math.random() * 3) + 2;  // 30% chance of 2-4 stars
+        
+        // Create review with sequential date (newest to oldest, so latest appear at top)
+        // Start from today and go backwards in time
+        const reviewDate = new Date(now.getTime() - (currentDateIndex * dateIncrement));
+        currentDateIndex++;
+        
+        // Create review
+        const review = new Review({
+          user: demoUserIds[userIndex],
+          product: product._id,
+          rating: rating,
+          comment: reviewComments[commentIndex],
+          isApproved: true, // Auto-approve demo reviews
+          isDisabled: false,
+          createdAt: reviewDate // Sequential date for proper ordering
+        });
+        
+        await review.save();
+        totalReviewsCreated++;
+      }
+      
+      // Update product rating
+      const allReviews = await Review.find({ 
+        product: product._id,
+        isApproved: true,
+        isDisabled: false
+      });
+      
+      if (allReviews.length > 0) {
+        const avgRating = allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length;
+        product.rating = Math.round(avgRating * 10) / 10;
+        product.numReviews = allReviews.length;
+        await product.save();
+      }
+      
+      results.push({
+        product: product.name,
+        reviewsAdded: numReviews
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Successfully added ${totalReviewsCreated} demo reviews to ${products.length} products`,
+      totalReviewsCreated,
+      productsUpdated: products.length,
+      details: results
+    });
+  } catch (error) {
+    console.error('Error adding demo reviews:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Delete all demo reviews (Admin only)
+router.delete('/reviews/demo', async (req, res) => {
+  try {
+    // Find all demo users by their email pattern
+    const demoUserEmails = [
+      'alex.johnson@demo.com', 'sarah.williams@demo.com', 'michael.brown@demo.com',
+      'emily.davis@demo.com', 'david.miller@demo.com', 'jessica.wilson@demo.com',
+      'james.moore@demo.com', 'olivia.taylor@demo.com', 'robert.anderson@demo.com',
+      'sophia.thomas@demo.com', 'william.jackson@demo.com', 'isabella.white@demo.com',
+      'daniel.harris@demo.com', 'ava.martin@demo.com', 'matthew.thompson@demo.com',
+      'rahul.sharma@demo.com', 'priya.patel@demo.com', 'amit.kumar@demo.com',
+      'anjali.singh@demo.com', 'vikram.gupta@demo.com', 'kavita.reddy@demo.com',
+      'rajesh.mehta@demo.com', 'sneha.desai@demo.com', 'arjun.joshi@demo.com',
+      'divya.iyer@demo.com', 'suresh.nair@demo.com', 'meera.menon@demo.com',
+      'karan.malhotra@demo.com', 'pooja.agarwal@demo.com', 'rohan.kapoor@demo.com',
+      'neha.choudhury@demo.com', 'aditya.verma@demo.com', 'shreya.banerjee@demo.com',
+      'vivek.tiwari@demo.com', 'riya.shah@demo.com', 'nikhil.agarwal@demo.com',
+      'ananya.rao@demo.com', 'siddharth.jain@demo.com', 'isha.trivedi@demo.com',
+      'manish.pandey@demo.com', 'swati.mishra@demo.com', 'harsh.varma@demo.com',
+      'tanvi.nanda@demo.com'
+    ];
+
+    // Find all demo users
+    const demoUsers = await User.find({ email: { $in: demoUserEmails } });
+    const demoUserIds = demoUsers.map(u => u._id);
+
+    if (demoUserIds.length === 0) {
+      return res.json({ 
+        success: true, 
+        message: 'No demo reviews found',
+        deletedCount: 0 
+      });
+    }
+
+    // Delete all reviews from demo users
+    const deleteResult = await Review.deleteMany({ user: { $in: demoUserIds } });
+    const deletedCount = deleteResult.deletedCount;
+
+    // Update all products that had demo reviews
+    const products = await Product.find({});
+    for (const product of products) {
+      const allReviews = await Review.find({ 
+        product: product._id,
+        isApproved: true,
+        isDisabled: false
+      });
+      
+      if (allReviews.length > 0) {
+        const avgRating = allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length;
+        product.rating = Math.round(avgRating * 10) / 10;
+        product.numReviews = allReviews.length;
+      } else {
+        product.rating = 0;
+        product.numReviews = 0;
+      }
+      
+      await product.save();
+    }
+
+    res.json({
+      success: true,
+      message: `Successfully deleted ${deletedCount} demo reviews`,
+      deletedCount: deletedCount
+    });
+  } catch (error) {
+    console.error('Error deleting demo reviews:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

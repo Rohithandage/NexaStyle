@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import api from '../api/api';
 import { toast } from 'react-toastify';
 import { getImageUrl, getBackendUrl } from '../utils/config';
-import { getCurrencyForCountry, formatPrice } from '../utils/currency';
+import { getCurrencyForCountry, formatPrice, getCurrencySymbol } from '../utils/currency';
 import './AdminDashboard.css';
 
 const AdminDashboard = () => {
@@ -42,7 +42,8 @@ const AdminDashboard = () => {
     colors: [],
     getPrintName: '',
     isTrending: false,
-    pricingByCountry: []
+    pricingByCountry: [],
+    alsoInCategories: []
   });
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [selectedOrderAddress, setSelectedOrderAddress] = useState(null);
@@ -825,6 +826,24 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleToggleCategory = async (categoryId, currentStatus) => {
+    try {
+      await api.put(
+        `/api/admin/categories/${categoryId}`,
+        { isActive: !currentStatus },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        }
+      );
+      toast.success(`Category ${!currentStatus ? 'enabled' : 'disabled'} successfully`);
+      fetchCategories();
+    } catch (error) {
+      toast.error('Error updating category status');
+    }
+  };
+
   const handleDeleteSubcategory = async (categoryId, subcategoryId) => {
     if (!window.confirm('Are you sure you want to delete this subcategory?')) return;
     try {
@@ -896,6 +915,76 @@ const AdminDashboard = () => {
       fetchPendingReviews();
     } catch (error) {
       toast.error('Error updating review');
+    }
+  };
+
+  const handleAddDemoReviews = async () => {
+    if (!window.confirm('This will add 3-5 demo reviews to all active products. Each review will have a different user name and comment. Continue?')) {
+      return;
+    }
+
+    try {
+      const res = await api.post(
+        '/api/admin/reviews/add-demo',
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        }
+      );
+      toast.success(res.data.message || `Successfully added ${res.data.totalReviewsCreated} demo reviews!`);
+      fetchAllReviews();
+      fetchPendingReviews();
+    } catch (error) {
+      console.error('Error adding demo reviews:', error);
+      toast.error(error.response?.data?.message || 'Error adding demo reviews');
+    }
+  };
+
+  const handleDeleteReview = async (reviewId) => {
+    if (!window.confirm('Are you sure you want to delete this review? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await api.delete(
+        `/api/reviews/${reviewId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        }
+      );
+      toast.success('Review deleted successfully');
+      fetchAllReviews();
+      fetchPendingReviews();
+    } catch (error) {
+      console.error('Error deleting review:', error);
+      toast.error(error.response?.data?.message || 'Error deleting review');
+    }
+  };
+
+  const handleDeleteAllDemoReviews = async () => {
+    if (!window.confirm('Are you sure you want to delete ALL demo reviews? This will remove all reviews from demo users. This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const res = await api.delete(
+        '/api/admin/reviews/demo',
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        }
+      );
+      toast.success(res.data.message || `Successfully deleted ${res.data.deletedCount} demo reviews!`);
+      fetchAllReviews();
+      fetchPendingReviews();
+    } catch (error) {
+      console.error('Error deleting demo reviews:', error);
+      toast.error(error.response?.data?.message || 'Error deleting demo reviews');
     }
   };
 
@@ -1030,17 +1119,32 @@ const AdminDashboard = () => {
     
     // Handle subcategory change - reset colors if subcategory changes
     if (name === 'subcategory') {
+      // When subcategory changes, remove only entries that match the old subcategory
+      // Keep entries for other subcategories
+      const oldSubcategory = productForm.subcategory;
+      const newAlsoInCategories = productForm.alsoInCategories?.filter(item => 
+        item.subcategory !== oldSubcategory
+      ) || [];
+      
       setProductForm({
         ...productForm,
         [name]: value,
-        colors: [] // Reset colors when subcategory changes
+        colors: [], // Reset colors when subcategory changes
+        alsoInCategories: newAlsoInCategories // Only remove entries for the old subcategory
       });
     } else if (name === 'category') {
+      // When category changes, remove all alsoInCategories entries for the old category
+      const oldCategory = productForm.category;
+      const newAlsoInCategories = productForm.alsoInCategories?.filter(item => 
+        item.category !== oldCategory
+      ) || [];
+      
       setProductForm({
         ...productForm,
         [name]: value,
         subcategory: '', // Reset subcategory when category changes
-        colors: [] // Reset colors when category changes
+        colors: [], // Reset colors when category changes
+        alsoInCategories: newAlsoInCategories // Only remove entries for the old category
       });
     } else {
       setProductForm({
@@ -1215,11 +1319,13 @@ const AdminDashboard = () => {
         colors: formattedColors,
         sizes: validSizes,
         images: allImages, // Include both general images and color-specific images
-        pricingByCountry: validCountryPricing
+        pricingByCountry: validCountryPricing,
+        alsoInCategories: productForm.alsoInCategories || []
       };
 
+      let savedProduct;
       if (editingProduct) {
-        await api.put(
+        const response = await api.put(
           `/api/admin/products/${editingProduct._id}`,
           productData,
           {
@@ -1228,9 +1334,10 @@ const AdminDashboard = () => {
             }
           }
         );
+        savedProduct = response.data;
         toast.success('Product updated successfully');
       } else {
-        await api.post(
+        const response = await api.post(
           '/api/admin/products',
           productData,
           {
@@ -1239,9 +1346,11 @@ const AdminDashboard = () => {
             }
           }
         );
+        savedProduct = response.data;
         toast.success('Product created successfully');
       }
       
+      // Close form and refresh products list
       setShowProductForm(false);
       setEditingProduct(null);
       setProductForm({
@@ -1256,9 +1365,15 @@ const AdminDashboard = () => {
         colors: [],
         getPrintName: '',
         isTrending: false,
-        pricingByCountry: []
+        pricingByCountry: [],
+        alsoInCategories: []
       });
       fetchProducts();
+      
+      // Log the saved product data for debugging
+      if (savedProduct && savedProduct.alsoInCategories) {
+        console.log('[PRODUCT SAVED] alsoInCategories:', JSON.stringify(savedProduct.alsoInCategories, null, 2));
+      }
     } catch (error) {
       const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Error saving product';
       toast.error(errorMessage);
@@ -1311,7 +1426,8 @@ const AdminDashboard = () => {
       colors: colors,
       getPrintName: product.getPrintName || '',
       isTrending: product.isTrending || false,
-      pricingByCountry: product.pricingByCountry || []
+      pricingByCountry: product.pricingByCountry || [],
+      alsoInCategories: product.alsoInCategories || []
     });
     setShowProductForm(true);
   };
@@ -2163,7 +2279,15 @@ const AdminDashboard = () => {
                           </div>
                           <div className="country-stat-item revenue-stat">
                             <span className="stat-value-small revenue-value">
-                              {formatPrice(country.revenue || 0, getCurrencyForCountry(country.country))}
+                              {(() => {
+                                const revenue = country.revenue || 0;
+                                const currencySymbol = country.currencySymbol || getCurrencySymbol(country.currency || 'USD');
+                                const formattedPrice = parseFloat(revenue).toLocaleString('en-US', { 
+                                  minimumFractionDigits: 2, 
+                                  maximumFractionDigits: 2 
+                                });
+                                return `${currencySymbol}${formattedPrice}`;
+                              })()}
                             </span>
                             <span className="stat-label-small">Revenue</span>
                           </div>
@@ -2355,7 +2479,41 @@ const AdminDashboard = () => {
                         [category._id]: !prev[category._id]
                       }))}
                     >
-                      <h3>{category.name}</h3>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <h3>{category.name}</h3>
+                        {category.name === 'Kids' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleCategory(category._id, category.isActive !== false);
+                            }}
+                            className={category.isActive !== false ? "disable-btn" : "enable-btn"}
+                            style={{ 
+                              padding: '0.5rem 1rem',
+                              fontSize: '0.875rem',
+                              borderRadius: '6px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontWeight: '600'
+                            }}
+                            title={category.isActive !== false ? 'Disable Kids Category' : 'Enable Kids Category'}
+                          >
+                            {category.isActive !== false ? '⏸️ Disable' : '▶️ Enable'}
+                          </button>
+                        )}
+                        {category.name === 'Kids' && (
+                          <span style={{ 
+                            fontSize: '0.875rem',
+                            padding: '0.25rem 0.75rem',
+                            borderRadius: '4px',
+                            backgroundColor: category.isActive !== false ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                            color: category.isActive !== false ? '#22c55e' : '#ef4444',
+                            fontWeight: '600'
+                          }}>
+                            {category.isActive !== false ? 'Active' : 'Inactive'}
+                          </span>
+                        )}
+                      </div>
                       <span className="category-toggle-icon">
                         {isExpanded ? '▼' : '▶'}
                       </span>
@@ -2727,13 +2885,31 @@ const AdminDashboard = () => {
                       : 'Reviews are currently disabled and hidden from the frontend'}
                   </p>
                 </div>
-                <button
-                  onClick={handleToggleReviewsEnabled}
-                  className={reviewsEnabled ? "disable-btn" : "enable-btn"}
-                  style={{ minWidth: '160px', fontSize: '1rem' }}
-                >
-                  {reviewsEnabled ? 'Disable Reviews' : 'Enable Reviews'}
-                </button>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={handleAddDemoReviews}
+                    className="approve-btn"
+                    style={{ minWidth: '180px', fontSize: '1rem' }}
+                    title="Add 3-5 demo reviews to all active products"
+                  >
+                    ➕ Add Demo Reviews
+                  </button>
+                  <button
+                    onClick={handleDeleteAllDemoReviews}
+                    className="delete-btn"
+                    style={{ minWidth: '200px', fontSize: '1rem' }}
+                    title="Delete all reviews from demo users"
+                  >
+                    🗑️ Delete All Demo Reviews
+                  </button>
+                  <button
+                    onClick={handleToggleReviewsEnabled}
+                    className={reviewsEnabled ? "disable-btn" : "enable-btn"}
+                    style={{ minWidth: '160px', fontSize: '1rem' }}
+                  >
+                    {reviewsEnabled ? 'Disable Reviews' : 'Enable Reviews'}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -2768,6 +2944,13 @@ const AdminDashboard = () => {
                           style={{ minWidth: '140px' }}
                         >
                           {(review.isDisabled === true) ? 'Enable Review' : 'Disable Review'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteReview(review._id)}
+                          className="delete-btn"
+                          style={{ minWidth: '100px' }}
+                        >
+                          🗑️ Delete
                         </button>
                       </div>
                     </div>
@@ -2815,6 +2998,13 @@ const AdminDashboard = () => {
                           style={{ minWidth: '140px' }}
                         >
                           {(review.isDisabled === true) ? 'Enable Review' : 'Disable Review'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteReview(review._id)}
+                          className="delete-btn"
+                          style={{ minWidth: '100px' }}
+                        >
+                          🗑️ Delete
                         </button>
                       </div>
                     </div>
@@ -3029,7 +3219,9 @@ const AdminDashboard = () => {
                     sizes: [],
                     colors: [],
                     getPrintName: '',
-                    isTrending: false
+                    isTrending: false,
+                    pricingByCountry: [],
+                    alsoInCategories: []
                   });
                 }}
                 className="add-product-btn"
@@ -3114,7 +3306,9 @@ const AdminDashboard = () => {
                           required
                         >
                           <option value="">Select Category</option>
-                          {categories.map((cat) => (
+                          {categories
+                            .filter(cat => cat.isActive !== false) // Only show active categories in product form
+                            .map((cat) => (
                             <option key={cat._id} value={cat.name}>
                               {cat.name}
                             </option>
@@ -3142,6 +3336,115 @@ const AdminDashboard = () => {
                       </div>
                     </div>
 
+                    {/* Checkbox to show product in opposite gender's subcategory if it exists */}
+                    {productForm.category && productForm.subcategory && (() => {
+                      // Check for Men -> Women
+                      if (productForm.category === 'Men') {
+                        const womenCategory = categories.find(cat => cat.name === 'Women');
+                        const selectedSubcategorySlug = productForm.subcategory;
+                        const womenSubcategory = womenCategory?.subcategories?.find(
+                          sub => sub.slug === selectedSubcategorySlug && sub.isActive
+                        );
+                        const isChecked = productForm.alsoInCategories?.some(
+                          item => {
+                            const matches = item.category === 'Women' && item.subcategory === selectedSubcategorySlug;
+                            if (matches) {
+                              console.log('[CHECKBOX] Match found:', { item, selectedSubcategorySlug });
+                            }
+                            return matches;
+                          }
+                        ) || false;
+                        
+                        return womenSubcategory ? (
+                          <div className="form-group" style={{ marginTop: '0.5rem', marginBottom: '1rem' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked || false}
+                                onChange={(e) => {
+                                  const currentAlsoIn = productForm.alsoInCategories || [];
+                                  if (e.target.checked) {
+                                    // Add to alsoInCategories if not already present
+                                    if (!isChecked) {
+                                      setProductForm({
+                                        ...productForm,
+                                        alsoInCategories: [
+                                          ...currentAlsoIn,
+                                          { category: 'Women', subcategory: selectedSubcategorySlug }
+                                        ]
+                                      });
+                                    }
+                                  } else {
+                                    // Remove from alsoInCategories
+                                    setProductForm({
+                                      ...productForm,
+                                      alsoInCategories: currentAlsoIn.filter(
+                                        item => !(item.category === 'Women' && item.subcategory === selectedSubcategorySlug)
+                                      )
+                                    });
+                                  }
+                                }}
+                              />
+                              <span>Also show this product in <strong>Women</strong> → <strong>{womenSubcategory.name}</strong> subcategory</span>
+                            </label>
+                          </div>
+                        ) : null;
+                      }
+                      // Check for Women -> Men
+                      else if (productForm.category === 'Women') {
+                        const menCategory = categories.find(cat => cat.name === 'Men');
+                        const selectedSubcategorySlug = productForm.subcategory;
+                        const menSubcategory = menCategory?.subcategories?.find(
+                          sub => sub.slug === selectedSubcategorySlug && sub.isActive
+                        );
+                        const isChecked = productForm.alsoInCategories?.some(
+                          item => {
+                            const matches = item.category === 'Men' && item.subcategory === selectedSubcategorySlug;
+                            if (matches) {
+                              console.log('[CHECKBOX Women->Men] Match found:', { item, selectedSubcategorySlug, alsoInCategories: productForm.alsoInCategories });
+                            }
+                            return matches;
+                          }
+                        ) || false;
+                        
+                        return menSubcategory ? (
+                          <div className="form-group" style={{ marginTop: '0.5rem', marginBottom: '1rem' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked || false}
+                                onChange={(e) => {
+                                  const currentAlsoIn = productForm.alsoInCategories || [];
+                                  if (e.target.checked) {
+                                    // Add to alsoInCategories if not already present
+                                    if (!isChecked) {
+                                      setProductForm({
+                                        ...productForm,
+                                        alsoInCategories: [
+                                          ...currentAlsoIn,
+                                          { category: 'Men', subcategory: selectedSubcategorySlug }
+                                        ]
+                                      });
+                                    }
+                                  } else {
+                                    // Remove from alsoInCategories
+                                    setProductForm({
+                                      ...productForm,
+                                      alsoInCategories: currentAlsoIn.filter(
+                                        item => !(item.category === 'Men' && item.subcategory === selectedSubcategorySlug)
+                                      )
+                                    });
+                                  }
+                                }}
+                              />
+                              <span>Also show this product in <strong>Men</strong> → <strong>{menSubcategory.name}</strong> subcategory</span>
+                            </label>
+                          </div>
+                        ) : null;
+                      }
+                      return null;
+                    })()}
+
                     <div className="form-group">
                       <label>Description *</label>
                       <textarea
@@ -3168,17 +3471,32 @@ const AdminDashboard = () => {
                               className="size-select"
                             >
                               <option value="">Select Size</option>
-                              <option value="XS">XS</option>
-                              <option value="S">S</option>
-                              <option value="M">M</option>
-                              <option value="L">L</option>
-                              <option value="XL">XL</option>
-                              <option value="2XL">2XL</option>
-                              <option value="3XL">3XL</option>
-                              <option value="4XL">4XL</option>
-                              <option value="5XL">5XL</option>
-                              <option value="6XL">6XL</option>
-                              <option value="7XL">7XL</option>
+                              {productForm.category === 'Kids' ? (
+                                <>
+                                  <option value="0-1 yr(20)">0-1 yr(20)</option>
+                                  <option value="1-2 yr(22)">1-2 yr(22)</option>
+                                  <option value="2-3 yr(24)">2-3 yr(24)</option>
+                                  <option value="3-4 yr(26)">3-4 yr(26)</option>
+                                  <option value="5-6 yr(28)">5-6 yr(28)</option>
+                                  <option value="7-8 yr(30)">7-8 yr(30)</option>
+                                  <option value="9-10 yr(32)">9-10 yr(32)</option>
+                                  <option value="11-12 yr(34)">11-12 yr(34)</option>
+                                </>
+                              ) : (
+                                <>
+                                  <option value="XS">XS</option>
+                                  <option value="S">S</option>
+                                  <option value="M">M</option>
+                                  <option value="L">L</option>
+                                  <option value="XL">XL</option>
+                                  <option value="2XL">2XL</option>
+                                  <option value="3XL">3XL</option>
+                                  <option value="4XL">4XL</option>
+                                  <option value="5XL">5XL</option>
+                                  <option value="6XL">6XL</option>
+                                  <option value="7XL">7XL</option>
+                                </>
+                              )}
                             </select>
                             <input
                               type="number"
@@ -3597,17 +3915,32 @@ const AdminDashboard = () => {
                                       className="size-select"
                                     >
                                       <option value="">Select Size</option>
-                                      <option value="XS">XS</option>
-                                      <option value="S">S</option>
-                                      <option value="M">M</option>
-                                      <option value="L">L</option>
-                                      <option value="XL">XL</option>
-                                      <option value="2XL">2XL</option>
-                                      <option value="3XL">3XL</option>
-                                      <option value="4XL">4XL</option>
-                                      <option value="5XL">5XL</option>
-                                      <option value="6XL">6XL</option>
-                                      <option value="7XL">7XL</option>
+                                      {productForm.category === 'Kids' ? (
+                                        <>
+                                          <option value="0-1 yr(20)">0-1 yr(20)</option>
+                                          <option value="1-2 yr(22)">1-2 yr(22)</option>
+                                          <option value="2-3 yr(24)">2-3 yr(24)</option>
+                                          <option value="3-4 yr(26)">3-4 yr(26)</option>
+                                          <option value="5-6 yr(28)">5-6 yr(28)</option>
+                                          <option value="7-8 yr(30)">7-8 yr(30)</option>
+                                          <option value="9-10 yr(32)">9-10 yr(32)</option>
+                                          <option value="11-12 yr(34)">11-12 yr(34)</option>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <option value="XS">XS</option>
+                                          <option value="S">S</option>
+                                          <option value="M">M</option>
+                                          <option value="L">L</option>
+                                          <option value="XL">XL</option>
+                                          <option value="2XL">2XL</option>
+                                          <option value="3XL">3XL</option>
+                                          <option value="4XL">4XL</option>
+                                          <option value="5XL">5XL</option>
+                                          <option value="6XL">6XL</option>
+                                          <option value="7XL">7XL</option>
+                                        </>
+                                      )}
                                     </select>
                                     <input
                                       type="number"
@@ -3873,15 +4206,40 @@ const AdminDashboard = () => {
             <div className="products-by-category">
               {(() => {
                 // Filter products by selected category and subcategory
+                // Include products where category/subcategory matches OR appears in alsoInCategories
                 let filteredProducts = allProducts;
                 if (selectedCategory) {
-                  filteredProducts = allProducts.filter(p => p.category === selectedCategory);
+                  filteredProducts = allProducts.filter(p => {
+                    // Check primary category
+                    if (p.category === selectedCategory) {
+                      return true;
+                    }
+                    // Check alsoInCategories
+                    if (p.alsoInCategories && Array.isArray(p.alsoInCategories)) {
+                      return p.alsoInCategories.some(item => item.category === selectedCategory);
+                    }
+                    return false;
+                  });
                 }
                 if (selectedSubcategory) {
-                  filteredProducts = filteredProducts.filter(p => 
-                    p.subcategory === selectedSubcategory || 
-                    p.subcategory.toLowerCase() === selectedSubcategory.toLowerCase()
-                  );
+                  filteredProducts = filteredProducts.filter(p => {
+                    // Check primary subcategory
+                    const primaryMatch = p.subcategory === selectedSubcategory || 
+                      p.subcategory.toLowerCase() === selectedSubcategory.toLowerCase();
+                    if (primaryMatch && (!selectedCategory || p.category === selectedCategory)) {
+                      return true;
+                    }
+                    // Check alsoInCategories
+                    if (p.alsoInCategories && Array.isArray(p.alsoInCategories)) {
+                      return p.alsoInCategories.some(item => {
+                        const subcategoryMatch = item.subcategory === selectedSubcategory ||
+                          item.subcategory?.toLowerCase() === selectedSubcategory.toLowerCase();
+                        const categoryMatch = !selectedCategory || item.category === selectedCategory;
+                        return subcategoryMatch && categoryMatch;
+                      });
+                    }
+                    return false;
+                  });
                 }
                 
                 // Filter by search term
