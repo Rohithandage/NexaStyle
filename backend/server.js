@@ -104,6 +104,12 @@ app.use('/api/upload', require('./routes/upload'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/razorpay', require('./routes/razorpay')); // Razorpay webhook route
 
+
+app.get('/', (req, res) => {
+  res.status(200).send('NexaStyle Backend is running');
+});
+
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'NexaStyle API is running' });
