@@ -472,6 +472,7 @@ const Navbar = () => {
                     </Link>
                     {category.subcategories
                       .filter(sub => sub.isActive)
+                      .sort((a, b) => (a.order || 0) - (b.order || 0))
                       .map((subcategory) => (
                         <Link
                           key={subcategory._id}

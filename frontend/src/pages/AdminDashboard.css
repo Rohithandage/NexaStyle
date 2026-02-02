@@ -622,6 +622,52 @@
   flex-wrap: wrap;
   border: 1px solid #e2e8f0;
   transition: all 0.3s ease;
+  position: relative;
+}
+
+.subcategory-reorder-buttons {
+  display: flex !important;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  min-width: 50px;
+  visibility: visible !important;
+  opacity: 1 !important;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
+
+.reorder-btn {
+  padding: 0.5rem 0.75rem;
+  background: #f7fafc !important;
+  border: 2px solid #667eea !important;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #667eea !important;
+  transition: all 0.2s ease;
+  min-width: 45px;
+  width: 100%;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  height: 40px;
+  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.1);
+}
+
+.reorder-btn:hover:not(:disabled) {
+  background: #667eea;
+  color: white;
+  border-color: #667eea;
+  transform: scale(1.05);
+}
+
+.reorder-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .subcategory-item:hover {
@@ -2499,6 +2545,17 @@
     align-items: stretch;
     padding: 1rem;
     gap: 0.75rem;
+  }
+
+  .subcategory-reorder-buttons {
+    flex-direction: row;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .reorder-btn {
+    flex: 1;
+    max-width: 80px;
   }
 
   .subcategory-name-input,

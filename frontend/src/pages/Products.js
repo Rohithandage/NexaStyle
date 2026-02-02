@@ -214,7 +214,9 @@ const Products = () => {
   };
 
   const currentCategory = categories.find(cat => cat.name === category);
-  const subcategories = currentCategory?.subcategories?.filter(sub => sub.isActive) || [];
+  const subcategories = currentCategory?.subcategories
+    ?.filter(sub => sub.isActive)
+    ?.sort((a, b) => (a.order || 0) - (b.order || 0)) || [];
 
   // Color gradients for offer cards
   const offerColors = [

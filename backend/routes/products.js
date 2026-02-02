@@ -860,10 +860,12 @@ router.get('/test-query', async (req, res) => {
 router.get('/categories/all', async (req, res) => {
   try {
     const categories = await Category.find({ isActive: { $ne: false } });
-    // Also filter out inactive subcategories
+    // Also filter out inactive subcategories and sort by order
     const filteredCategories = categories.map(category => ({
       ...category.toObject(),
-      subcategories: category.subcategories.filter(sub => sub.isActive !== false)
+      subcategories: category.subcategories
+        .filter(sub => sub.isActive !== false)
+        .sort((a, b) => (a.order || 0) - (b.order || 0))
     }));
     res.json(filteredCategories);
   } catch (error) {
