@@ -456,13 +456,10 @@ const Products = () => {
                               alt={product.name}
                               loading="lazy"
                               decoding="async"
-                              width="400"
-                              height="400"
                               style={{
                                 width: "100%",
-                                aspectRatio: "1 / 1",
-                                objectFit: "cover",
-                                backgroundColor: "#f2f2f2"
+                                height: "auto",
+                                display: "block"
                               }}
                               onError={(e) => {
                                 e.target.onerror = null;

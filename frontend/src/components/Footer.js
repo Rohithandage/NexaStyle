@@ -38,6 +38,15 @@ const Footer = () => {
     return location.pathname.includes(path);
   };
 
+  const handleHomeClick = (e) => {
+    // If already on home page, prevent navigation and scroll to top
+    if (location.pathname === '/') {
+      e.preventDefault();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    // If navigating to home from another page, the ScrollToTop component will handle scrolling
+  };
+
   // Detect if header/navbar is visible using Intersection Observer
   useEffect(() => {
     const checkHeaderVisibility = () => {
@@ -256,6 +265,7 @@ const Footer = () => {
           to="/" 
           className={`mobile-nav-item ${isActive('/') && location.pathname === '/' ? 'active' : ''}`} 
           aria-label="Home"
+          onClick={handleHomeClick}
         >
           <FiHome />
           <span>Home</span>

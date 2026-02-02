@@ -923,9 +923,8 @@
 .product-image {
   position: relative;
   width: 100%;
-  aspect-ratio: 1 / 1;
   overflow: hidden;
-  background: #f2f2f2;
+  background: transparent;
   display: block;
   padding: 0;
   margin: 0;
@@ -952,13 +951,12 @@
 
 .product-image img {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.3s ease;
+  height: auto;
   display: block;
   margin: 0;
   padding: 0;
   vertical-align: top;
+  transition: transform 0.3s ease;
 }
 
 .product-card:hover .product-image img {
@@ -1273,10 +1271,10 @@
   }
 
   .product-image {
-    aspect-ratio: 1;
     padding: 0;
     margin: 0;
     border-radius: 8px 8px 0 0;
+    background: transparent;
   }
 
   .offer-badge {
@@ -1288,8 +1286,7 @@
 
   .product-image img {
     width: 100%;
-    height: 100%;
-    object-fit: cover;
+    height: auto;
     display: block;
     padding: 0;
     margin: 0;
@@ -1429,10 +1426,10 @@
   }
 
   .product-image {
-    aspect-ratio: 1;
     padding: 0;
     margin: 0;
     border-radius: 8px 8px 0 0;
+    background: transparent;
   }
 
   .offer-badge {
@@ -1444,8 +1441,7 @@
 
   .product-image img {
     width: 100%;
-    height: 100%;
-    object-fit: cover;
+    height: auto;
     display: block;
     padding: 0;
     margin: 0;

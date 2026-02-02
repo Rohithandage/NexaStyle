@@ -50,8 +50,8 @@ const Home = () => {
   const [trendingProducts, setTrendingProducts] = useState([]);
   const [featuredProducts, setFeaturedProducts] = useState([]);
   const [headerImages, setHeaderImages] = useState([]);
-  const [showAllTrending, setShowAllTrending] = useState(false);
-  const [showAllFeatured, setShowAllFeatured] = useState(false);
+  const [trendingProductsLimit, setTrendingProductsLimit] = useState(4);
+  const [featuredProductsLimit, setFeaturedProductsLimit] = useState(4);
   const [hasCartItems, setHasCartItems] = useState(false);
   const [offers, setOffers] = useState([]);
   const [dismissedOffers, setDismissedOffers] = useState([]);
@@ -94,6 +94,7 @@ const Home = () => {
       window.removeEventListener('currencyChanged', handleCurrencyChange);
     };
   }, [isAuthenticated]);
+
 
   // Add class to body when offer banner is visible and set its height for navbar positioning
   useEffect(() => {
@@ -491,7 +492,7 @@ const Home = () => {
 
   const fetchTrendingProducts = async () => {
     try {
-      const res = await api.get('/api/products?trending=true&limit=8');
+      const res = await api.get('/api/products?trending=true&limit=1000');
       setTrendingProducts(res.data.products || []);
     } catch (error) {
       console.error('Error fetching trending products:', error);
@@ -500,7 +501,7 @@ const Home = () => {
 
   const fetchFeaturedProducts = async () => {
     try {
-      const res = await api.get('/api/products?limit=8');
+      const res = await api.get('/api/products?limit=1000');
       setFeaturedProducts(res.data.products || []);
     } catch (error) {
       console.error('Error fetching products:', error);
@@ -765,7 +766,7 @@ const Home = () => {
             <p className="no-products-message">No trending products at the moment</p>
         ) : (
           <>
-              {(showAllTrending ? trendingProducts : trendingProducts.slice(0, 4)).map((product) => {
+              {trendingProducts.slice(0, trendingProductsLimit).map((product) => {
               // Get country-specific pricing
               const countryPricing = getProductPriceForCountry(product);
               const productPrice = countryPricing.price;
@@ -788,13 +789,10 @@ const Home = () => {
                           alt={product.name}
                           loading="lazy"
                           decoding="async"
-                          width="400"
-                          height="400"
                           style={{
                             width: "100%",
-                            aspectRatio: "1 / 1",
-                            objectFit: "cover",
-                            backgroundColor: "#f2f2f2"
+                            height: "auto",
+                            display: "block"
                           }}
                           onError={(e) => {
                             e.target.onerror = null;
@@ -854,10 +852,10 @@ const Home = () => {
                 </div>
               );
               })}
-            {trendingProducts.length > 4 && !showAllTrending && (
+            {trendingProductsLimit < trendingProducts.length && (
               <div style={{ textAlign: 'center', marginTop: '2rem', gridColumn: '1 / -1' }}>
                 <button
-                  onClick={() => setShowAllTrending(true)}
+                  onClick={() => setTrendingProductsLimit(prev => Math.min(prev + 4, trendingProducts.length))}
                   className="more-products-btn"
                 >
                   More
@@ -876,7 +874,7 @@ const Home = () => {
             <p className="no-products-message">No featured products at the moment</p>
         ) : (
           <>
-              {(showAllFeatured ? featuredProducts : featuredProducts.slice(0, 4)).map((product) => {
+              {featuredProducts.slice(0, featuredProductsLimit).map((product) => {
             // Get country-specific pricing
             const countryPricing = getProductPriceForCountry(product);
             const productPrice = countryPricing.price;
@@ -899,13 +897,10 @@ const Home = () => {
                         alt={product.name}
                         loading="lazy"
                         decoding="async"
-                        width="400"
-                        height="400"
                         style={{
                           width: "100%",
-                          aspectRatio: "1 / 1",
-                          objectFit: "cover",
-                          backgroundColor: "#f2f2f2"
+                          height: "auto",
+                          display: "block"
                         }}
                         onError={(e) => {
                           e.target.onerror = null;
@@ -965,10 +960,10 @@ const Home = () => {
               </div>
             );
           })}
-            {featuredProducts.length > 4 && !showAllFeatured && (
+            {featuredProductsLimit < featuredProducts.length && (
               <div style={{ textAlign: 'center', marginTop: '2rem', gridColumn: '1 / -1' }}>
                 <button
-                  onClick={() => setShowAllFeatured(true)}
+                  onClick={() => setFeaturedProductsLimit(prev => Math.min(prev + 4, featuredProducts.length))}
                   className="more-products-btn"
                 >
                   More
